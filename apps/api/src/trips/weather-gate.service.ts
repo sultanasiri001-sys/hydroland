@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { validWeatherReview, WeatherReviewContext } from './weather-review-context';
 import { mandatoryBindingStatus } from './mandatory-policy.domain';
+import type { ProviderProvenance } from '../integrations/provider-read-policy';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
 export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAVAILABLE';
@@ -12,6 +13,7 @@ export type WeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 
 export type WeatherSnapshot = {
   forecastContext?: WeatherReviewContext;
+  provenance?: ProviderProvenance;
   provider?: string;
   source?: string;
   observedAt?: string;

@@ -7,12 +7,17 @@ if(body?.engine!=='MAPLIBRE'||body?.engineVersion!=='6.11.2')throw new Error(`Un
 if(body?.status!=='SANDBOX'||body?.provider!=='E2E_MAPS'||body?.enabled!==true)throw new Error(`Sandbox maps integration was not exposed as operational: ${JSON.stringify(body)}`);
 if(body?.styleUrl!=='https://maps.hydroland.test/style.json')throw new Error(`Public map style URL mismatch: ${JSON.stringify(body)}`);
 if(Object.keys(body||{}).some(key=>/secret|password|private|apiKey/i.test(key)))throw new Error('Maps public config exposed a secret-shaped property.');
+if(body?.purpose!=='INFORMATION_ONLY'||body?.automaticSafetyPermission!==false||body?.providerVerified!==false||!body?.allowedOrigins?.includes('https://maps.hydroland.test')||Date.parse(body?.validUntil)<=Date.now())throw new Error('Maps must carry a current informational source boundary.');
+if(response.headers.get('cache-control')!=='no-store')throw new Error('Source configuration must not be cached.');
 
 response=await fetch(`${base}/integrations/weather/public-config`);
 body=await response.json().catch(()=>null);
 if(!response.ok)throw new Error(`Weather public config expected 200, got ${response.status}: ${JSON.stringify(body)}`);
 if(body?.provider!=='STORMGLASS'||body?.status!=='SANDBOX'||body?.configured!==true||body?.sandbox!==true)throw new Error(`Unexpected public weather readiness contract: ${JSON.stringify(body)}`);
 if(Object.keys(body||{}).some(key=>/secret|password|private|apiKey/i.test(key)))throw new Error('Weather public config exposed a secret-shaped property.');
+if(body?.providerVerified!==false||body?.automaticSafetyPermission!==false)throw new Error('Configured weather is not provider verification or safety permission.');
+response=await fetch(`${base}/integrations/marine/readiness`);
+if(response.status!==401)throw new Error('D03 detailed native source readiness must require authenticated ADMIN access.');
 
 const protectedReadiness=[
   'payment','settlement','email','sms','whatsapp','object-storage','translation','esign','distress-ais','nafath','regulatory',

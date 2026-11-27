@@ -30,8 +30,8 @@ for(const marker of [
 ])if(!types.includes(marker))throw new Error(`Readiness payload type contract missing: ${marker}`);
 
 for(const marker of [
-  'publicMapConfig():MapsPublicConfigPayload',
-  'publicWeatherConfig():WeatherPublicConfigPayload',
+  'publicMapConfig():Promise<MapsPublicConfigPayload>',
+  'publicWeatherConfig():Promise<WeatherPublicConfigPayload>',
 ])if(!service.includes(marker))throw new Error(`Public integration config is not bound to its payload contract: ${marker}`);
 
 for(const method of [
@@ -41,7 +41,8 @@ for(const method of [
   if(!readiness.includes(`${method}():IntegrationReadinessPayload`))throw new Error(`${method} is not bound to IntegrationReadinessPayload.`);
 }
 if(!settlement.includes('getSettlementReadiness():IntegrationReadinessPayload'))throw new Error('Settlement readiness is not bound to IntegrationReadinessPayload.');
-if(!distress.includes('getDistressAisReadiness():DistressAisReadinessPayload'))throw new Error('DISTRESS_AIS readiness is not bound to DistressAisReadinessPayload.');
+if(!distress.includes('getDistressAisReadiness():Promise<DistressAisReadinessPayload>'))throw new Error('DISTRESS_AIS readiness is not bound to DistressAisReadinessPayload.');
+for(const marker of ['reason:string|null','validUntil:string|null','providerVerified:false','automaticSafetyPermission:false',"purpose:'INFORMATION_ONLY'"])if(!types.includes(marker))throw new Error('D03 source boundary contract missing: '+marker);
 for(const method of ['getNafathReadiness','getRegulatoryReadiness']){
   if(!onboarding.includes(`${method}():OfficialOnboardingReadinessPayload`))throw new Error(`${method} is not bound to OfficialOnboardingReadinessPayload.`);
 }

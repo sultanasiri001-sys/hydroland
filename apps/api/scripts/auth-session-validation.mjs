@@ -58,7 +58,8 @@ const requiredService=[
   "if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null}",
   "process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'",
   "account.email.endsWith('@example.invalid')",
-  "exp:now+900",
+  "export const ACCESS_TOKEN_TTL_SECONDS=900;",
+  "exp:now+ACCESS_TOKEN_TTL_SECONDS",
   "expiresAt:new Date(Date.now()+2592000000)"
 ];
 for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration/recovery/Google invariant: ${marker}`);
@@ -80,7 +81,7 @@ for(const marker of requiredController) assert.ok(controller.includes(marker),`M
 assert.ok(!controller.includes('const attempts=new Map'),'Legacy unbounded shared login attempt map must not return.');
 
 for(const marker of [
-  "tokenHash:this.challengeHash(challengeToken)","expiresAt:new Date(Date.now()+5*60*1000)","return`mfa:${createHash('sha256').update(token).digest('hex')}`",
+  "tokenHash:this.challengeHash(challengeToken)","expiresAt=new Date(Date.now()+5*60*1000)","challengeToken,expiresAt:expiresAt.toISOString()","return`mfa:${createHash('sha256').update(token).digest('hex')}`",
   "if(!credential?.enabledAt||!await this.verifyCode",'consumed.count!==1',"new Date(Date.now()+10*60*1000).toISOString()",
   'recoveryCodes=Array.from({length:10}',"tx.operationalSetting.deleteMany",'revokeOthers(accountId,currentSessionId,tx)','invalidateChallenge(challengeToken:string)',
   "code:'MFA_ALREADY_ENABLED'",'return this.db.serializable(async tx=>'

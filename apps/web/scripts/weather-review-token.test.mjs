@@ -8,13 +8,20 @@ test('weather admin submits the displayed revision, handles conflicts, and disab
   const listeners = new Map(), states = {}, requests = [];
   let item = { id: 'offline-trip', title: 'Offline', startsAt: '2037-01-01', location: { locationName: 'A', latitude: 0, longitude: 0 }, weatherReview: { status: 'PENDING', decisionToken: 'a'.repeat(64), requiresRefresh: false, snapshot: { windSpeedKph: null } } };
   let promptResult = 'Offline review', conflict = false;
-  const button = () => ({ events: {}, addEventListener(event, fn) { this.events[event] = fn; } });
+  const button = () => ({
+    events: {}, children: [], text: '',
+    addEventListener(event, fn) { this.events[event] = fn; },
+    get textContent() { return this.text + this.children.map(node => node.textContent).join(''); },
+    set textContent(value) { this.text = String(value); this.children = []; },
+    replaceChildren(...nodes) { this.text = ''; this.children = nodes; },
+    append(...nodes) { this.children.push(...nodes); },
+  });
   const holder = { html: '', cards: [], set innerHTML(html) {
     this.html = html;
     this.cards = [...html.matchAll(/<article[^>]*data-weather-trip="([^"]*)"[^>]*data-weather-token="([^"]*)"/g)].map(match => ({ dataset: { weatherTrip: match[1], weatherToken: match[2] }, buttons: {}, querySelector(selector) { return this.buttons[selector] ??= button(); } }));
   }, get innerHTML() { return this.html; }, querySelectorAll() { return this.cards; } };
   const panel = { hidden: true, dataset: {}, innerHTML: '', querySelector(selector) { if (selector === '[data-weather-trips]') return holder; return states[selector] ??= button(); } };
-  const document = { getElementById: () => ({ insertAdjacentElement() {} }), createElement: () => panel, addEventListener: (name, fn) => listeners.set(name, fn) };
+  const document = { getElementById: () => ({ insertAdjacentElement() {} }), createElement: tag => tag === 'section' ? panel : button(), addEventListener: (name, fn) => listeners.set(name, fn) };
   const window = { location: { hostname: 'localhost' }, HydrolandAuth: { apiBase: 'http://127.0.0.1/api/v1', getAccessToken: () => 'offline-token' }, HydrolandPortalAccess: { getCurrentRole: () => 'admin' }, prompt: () => promptResult, dispatchEvent() {} };
   const fetch = async (url, input = {}) => {
     assert.equal(new URL(url).hostname, '127.0.0.1');
@@ -26,12 +33,15 @@ test('weather admin submits the displayed revision, handles conflicts, and disab
     }
     if (url.endsWith('/trips/admin')) return { ok: true, json: async () => [item] };
     if (url.endsWith('/weather-gate')) return { ok: true, json: async () => ({ enabled: true, mode: 'ENFORCE', provider: 'STORMGLASS' }) };
+    if (url.endsWith('/integrations/weather/public-config')) return { ok: true, json: async () => ({ configured: true, attribution: 'Isolated fixture source', validUntil: '2037-01-01T00:00:00.000Z' }) };
     throw new Error('Unexpected fixture request: ' + url);
   };
   const source = fs.readFileSync(new URL('../src/hydroland-weather-admin.js', import.meta.url), 'utf8');
   vm.runInNewContext(source, { window, document, fetch, CustomEvent: class { constructor(name, details) { this.name = name; this.detail = details; } } });
   const settled = () => new Promise(resolve => setImmediate(resolve));
   await settled();
+  assert.match(states['[data-weather-source]'].textContent, /نسبة المصدر: Isolated fixture source/);
+  assert.equal(states['[data-weather-source]'].children.length, 2, 'source attribution and validity use distinct child nodes');
   assert.match(holder.html, /الرياح —/);
   assert.equal(holder.cards[0].dataset.weatherToken, 'a'.repeat(64));
   await holder.cards[0].buttons['[data-weather-approve]'].events.click();
@@ -50,4 +60,8 @@ test('weather admin submits the displayed revision, handles conflicts, and disab
   assert.match(holder.html, /يلزم تحديث التوقع/);
   assert.match(holder.html, /data-weather-approve disabled/);
   assert.match(holder.html, /data-weather-reject disabled/);
+  listeners.get('hydroland:role-changed')({ detail: { role: 'diver' } });
+  assert.equal(panel.hidden, true);
+  assert.equal(states['[data-weather-source]'].textContent, '', 'role loss clears source text and child nodes');
+  assert.equal(states['[data-weather-source]'].children.length, 0);
 });

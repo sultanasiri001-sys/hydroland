@@ -16,7 +16,7 @@ export class MfaService{
 
   async beginChallenge(accountId:string){return this.db.serializable(async tx=>{
     await lockActiveSessionAccount(tx,accountId);
-    const challengeToken=randomBytes(48).toString('base64url');await tx.session.create({data:{accountId,tokenHash:this.challengeHash(challengeToken),expiresAt:new Date(Date.now()+5*60*1000)}});return{mfaRequired:true as const,challengeToken};
+    const challengeToken=randomBytes(48).toString('base64url'),expiresAt=new Date(Date.now()+5*60*1000);await tx.session.create({data:{accountId,tokenHash:this.challengeHash(challengeToken),expiresAt}});return{mfaRequired:true as const,challengeToken,expiresAt:expiresAt.toISOString()};
   })}
 
   // The caller's transaction includes issuing the resulting authenticated session.

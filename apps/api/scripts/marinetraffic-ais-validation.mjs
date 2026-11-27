@@ -31,7 +31,7 @@ for(const marker of [
   "@Get('distress-ais')",
   "this.integrations.status('DISTRESS_AIS')",
   "aisProviderConfigured:provider==='MARINETRAFFIC_AIS_ONLY'",
-  'aisCredentialsConfigured:Boolean(process.env.MARINETRAFFIC_API_KEY?.trim())',
+  "aisCredentialsConfigured:/^[0-9a-f]{40}$/i.test(process.env.MARINETRAFFIC_API_KEY?.trim()||'')",
   'distressProviderConfigured:false',
   'distressReady:false',
   'productionReady:false',

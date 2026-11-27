@@ -188,7 +188,12 @@ test('pending microphone permission is cancelled by discard and never leaves a s
 });
 
 test('private recording captures PCM, requires consent and clears on session loss',async({page})=>{
-  const {dialog,select}=await historyFixture(page);await select('history-a');await dialog.locator('summary').click();
+  const {dialog,select}=await historyFixture(page);await select('history-a');
+  // Conversation rendering precedes read/indicator/policy initialization.
+  // Start this PCM recording exercise after those setup requests settle.
+  await expect(dialog.locator('[data-message-title]')).toHaveText('Long conversation');
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await dialog.locator('summary').click();
   await page.evaluate(()=>{window.audioStops=0;window.audioClosed=0;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>window.audioStops++}]})}});window.AudioContext=class{sampleRate=48000;destination={};async resume(){}createMediaStreamSource(){return{connect(){},disconnect(){}}}createScriptProcessor(){window.audioProcessor={connect(){},disconnect(){},onaudioprocess:null};return window.audioProcessor}async close(){window.audioClosed++}}});
   await dialog.locator('[data-record-voice]').click();await expect(dialog.locator('[data-stop-voice]')).toBeEnabled();await page.evaluate(()=>window.audioProcessor.onaudioprocess({inputBuffer:{getChannelData:()=>new Float32Array(48000).fill(.25)}}));await dialog.locator('[data-stop-voice]').click();await expect(dialog.locator('[data-audio-preview]')).toBeVisible();await expect.poll(()=>page.evaluate(()=>window.audioStops)).toBe(1);
   await dialog.locator('[data-send-voice]').click();await expect(dialog.locator('[data-message-status]')).toContainText('راجع الصوت');

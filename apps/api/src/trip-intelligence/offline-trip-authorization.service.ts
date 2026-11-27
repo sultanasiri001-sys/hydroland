@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { Prisma } from '@prisma/client';
 
 export type OfflineTripReader = { accountId: string; sessionId: string };
 
@@ -7,13 +8,13 @@ export type OfflineTripReader = { accountId: string; sessionId: string };
 export class OfflineTripAuthorizationService {
   constructor(private readonly db: DatabaseService) {}
 
-  async assertAccess(reader: OfflineTripReader, tripId: string): Promise<void> {
+  async assertAccess(reader: OfflineTripReader, tripId: string, tx:Prisma.TransactionClient=this.db): Promise<void> {
     // Identity comes only from AccessTokenGuard. Recheck the persisted session and
     // account here as reads/signing may outlive the controller guard's check.
     if (!reader?.accountId || !reader.sessionId) throw new UnauthorizedException('Active session required.');
     // One statement evaluates identity, current entitlements and resource scope
     // together. Separate checks can miss a revocation between their snapshots.
-    const [access] = await this.db.$queryRaw<Array<{ authenticated: boolean; permitted: boolean }>>`
+    const [access] = await tx.$queryRaw<Array<{ authenticated: boolean; permitted: boolean }>>`
       WITH reader AS (
         SELECT a."id" FROM "Account" a JOIN "Session" s ON s."accountId" = a."id"
         WHERE a."id"::text = ${reader.accountId} AND s."id"::text = ${reader.sessionId}

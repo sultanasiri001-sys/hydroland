@@ -1,8 +1,11 @@
 import { deliveredSms, smsBinding } from './unifonic-dlr';
-import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { IntegrationDescriptor, IntegrationKey, MapsPublicConfigPayload, VerifiedWebhook, WeatherPublicConfigPayload } from './integration.types';
+import { MarineReadKey, ProviderReadUnavailable, ProviderSource, publicHttpsUrl } from './provider-read-policy';
+import { Prisma } from '@prisma/client';
+import { stormglassEndpoint } from './provider-read-http';
 const catalog:readonly IntegrationDescriptor[]=[
  {key:'AI_MODEL',name:'Bounded AI task execution',category:'ai',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
  {key:'WEATHER_MARINE',name:'Weather & marine data',category:'marine',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:false},
@@ -37,19 +40,32 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
  async providerObservations(){return this.audit.providerHealth()}
  list(){return catalog.map(item=>({...item,status:this.configuredStatus(item.key)??item.status}))}
  status(key:IntegrationKey){const integration=this.list().find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
- publicMapConfig():MapsPublicConfigPayload{
+ async providerSource(key:MarineReadKey,tx?:Prisma.TransactionClient){return this.audit.providerReadSource(key,tx)}
+ inspectProviderCandidate(actorId:string,key:string,documentId:string){if(!['MAPS_GEO','WEATHER_MARINE','DISTRESS_AIS'].includes(key)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(documentId))throw new BadRequestException('Invalid provider source reference.');return this.audit.inspectProviderCandidate(actorId,key as MarineReadKey,documentId);}
+ async withProviderRead<T>(key:MarineReadKey,operation:(source:ProviderSource)=>Promise<T>){return this.audit.withProviderRead(key,operation)}
+ async sourceReadiness(key:MarineReadKey){
+  try{const source=await this.providerSource(key);return {ready:true as const,reason:null,source};}
+  catch(error){return{ready:false as const,reason:error instanceof ProviderReadUnavailable?error.reason:'SOURCE_EVIDENCE_UNAVAILABLE',source:null};}
+ }
+ async marineReadiness(){
+  return Promise.all((['MAPS_GEO','WEATHER_MARINE','DISTRESS_AIS'] as const).map(async key=>{const result=await this.sourceReadiness(key),s=result.source;return{integration:key,configuredSource:result.ready,reason:result.reason,providerVerified:false,automaticSafetyPermission:false,source:s?{documentId:s.documentId,documentVersion:s.version,referenceNumber:s.referenceNumber,sourceHash:s.sourceHash,attribution:s.policy.attribution,termsUrl:s.policy.termsUrl,validFrom:s.policy.validFrom,validUntil:s.policy.validUntil,maxDataAgeSeconds:s.policy.maxDataAgeSeconds,limits:{scope:key==='MAPS_GEO'?'PUBLIC_NO_CHARGE_VIEW':'SERVER_READ',maxResourcesPerView:key==='MAPS_GEO'?s.policy.maxResourcesPerView:null,requestsPerMinute:key==='MAPS_GEO'?null:s.policy.maxRequestsPerMinute,requestsPerDay:key==='MAPS_GEO'?null:s.policy.maxRequestsPerDay,currency:s.policy.currency,costMicrosPerRequest:s.policy.maxCostMicrosPerRequest,costMicrosPerDay:s.policy.maxCostMicrosPerDay,actualBilledCost:null}}:null};}));
+ }
+ async publicMapConfig():Promise<MapsPublicConfigPayload>{
   const integration=this.status('MAPS_GEO');
   const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
   const styleUrl=process.env.HYDROLAND_MAP_STYLE_URL?.trim()||null;
   const provider=process.env.HYDROLAND_MAP_PROVIDER?.trim()||'UNCONFIGURED';
-  const attribution=process.env.HYDROLAND_MAP_ATTRIBUTION?.trim()||null;
-  return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled:operational&&Boolean(styleUrl),styleUrl:operational?styleUrl:null,attribution};
+  const source=await this.sourceReadiness('MAPS_GEO'),url=publicHttpsUrl(styleUrl),policy=source.source?.policy;
+  const enabled=Boolean(operational&&source.ready&&url&&policy?.allowedOrigins.includes(url.origin));
+  return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled,styleUrl:enabled?styleUrl:null,attribution:policy?.attribution??null,reason:source.reason??(enabled?null:'MAP_SOURCE_URL_INVALID'),validUntil:policy?.validUntil??null,allowedOrigins:enabled?policy!.allowedOrigins:[],maxResourcesPerView:enabled?policy!.maxResourcesPerView:0,providerVerified:false,automaticSafetyPermission:false,purpose:'INFORMATION_ONLY'};
  }
- publicWeatherConfig():WeatherPublicConfigPayload{
+ async publicWeatherConfig():Promise<WeatherPublicConfigPayload>{
   const integration=this.status('WEATHER_MARINE');
   const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
   const credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim());
-  return{status:integration.status,provider:'STORMGLASS',configured:operational&&credentialsConfigured,sandbox:integration.status==='SANDBOX'};
+  const source=await this.sourceReadiness('WEATHER_MARINE');
+  let endpointValid=true;try{stormglassEndpoint()}catch{endpointValid=false}
+  return{status:integration.status,provider:'STORMGLASS',configured:operational&&credentialsConfigured&&source.ready&&endpointValid,sandbox:integration.status==='SANDBOX',reason:source.reason??(!credentialsConfigured?'PROVIDER_CREDENTIALS_REQUIRED':!endpointValid?'PROVIDER_ENDPOINT_INVALID':null),attribution:source.source?.policy.attribution??null,validUntil:source.source?.policy.validUntil??null,providerVerified:false,automaticSafetyPermission:false,purpose:'INFORMATION_ONLY'};
  }
  requireOperational(key:IntegrationKey,options:{allowSandbox?:boolean}={}){
   const integration=this.status(key);

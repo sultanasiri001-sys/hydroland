@@ -44,7 +44,7 @@ export type RoutineSource = {
 };
 export function routineEligibility(d: RoutineSource): { eligible: boolean; reason: string | null; purpose: string | null } {
   const no = (reason: string) => ({ eligible: false, reason, purpose: null });
-  const definition = Object.hasOwn(OWNER_DECISION_TEMPLATES, d.template.code) ? OWNER_DECISION_TEMPLATES[d.template.code] : undefined;
+  const definition = Object.prototype.hasOwnProperty.call(OWNER_DECISION_TEMPLATES, d.template.code) ? OWNER_DECISION_TEMPLATES[d.template.code] : undefined;
   if (!definition) return no('DOCUMENT_TYPE_EXCLUDED');
   if (d.organizationId !== d.template.organizationId || d.department !== definition.department || d.template.department !== definition.department) return no('DEPARTMENT_MISMATCH');
   if (!['DRAFT', 'PENDING_APPROVAL'].includes(d.status) || d.approvedByAccountId || d.signedByAccountId || d.archivedByAccountId) return no('EXISTING_APPROVAL_OR_FINAL_STATE');

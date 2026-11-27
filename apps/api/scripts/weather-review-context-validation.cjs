@@ -57,7 +57,7 @@ function harness() {
     $executeRaw: async () => { state.reviews = state.reviews.map(row => row.status === 'APPROVED' ? revise({ ...row, status: 'PENDING', reviewedAt: null, reviewedByAccountId: null }) : row); return 1; },
   };
   let providerCalls = 0;
-  const weather = { snapshot: async () => { providerCalls++; return { provider: 'STORMGLASS', observedAt: state.trip.startsAt.toISOString(), windSpeedKph: 10 }; } };
+  const weather = { sourceCurrent:async()=>true, snapshot: async () => { providerCalls++; return { provider: 'STORMGLASS', observedAt: state.trip.startsAt.toISOString(), windSpeedKph: 10 }; } };
   const service = new TripWeatherReviewService(db, weather, { record: async (event, tx) => { check(() => assert.equal(tx, db)); if (failAudit) throw new Error('Offline audit failure'); state.audits.push(copy(event)); } });
   const approve = async review => service.decide('offline-admin', state.trip.id, { status: 'APPROVED', expectedReview: review.decisionToken });
   return { state, service, weather, approve, providerCalls: () => providerCalls, revoke: () => activeAdmin = false, failAudit: () => failAudit = true, casMiss: () => casMiss = true };
@@ -182,9 +182,10 @@ function harness() {
   // No real environment variables are read/changed, and no network request can occur.
   const filename = path.resolve(__dirname, '../dist/trips/stormglass-weather.service.js');
   const adapterModule = { exports: {} }; let payload, requests = 0;
-  const sandbox = { module: adapterModule, exports: adapterModule.exports, require: createRequire(filename), process: { env: { STORMGLASS_API_KEY: 'offline-fixture', STORMGLASS_API_BASE_URL: 'https://provider.invalid' } }, URL, AbortSignal, Date, fetch: async () => { requests++; return { ok: true, json: async () => payload }; } };
+  const sandbox = { module: adapterModule, exports: adapterModule.exports, require: createRequire(filename), process: { env: { STORMGLASS_API_KEY: 'offline-fixture', STORMGLASS_API_BASE_URL: 'https://api.stormglass.io' } }, URL, AbortSignal, Date, fetch: async () => { requests++; return new Response(JSON.stringify(payload),{headers:{'content-type':'application/json'}}); } };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
-  const adapter = new adapterModule.exports.StormglassWeatherService({ requireOperational: () => {}, recordProviderSignal: async () => {} });
+  const fixtureSource={documentId:'offline-doc',version:1,sourceHash:'a'.repeat(64),policyHash:'b'.repeat(64),policy:{attribution:'Isolated technical fixture',validUntil:new Date(Date.now()+3600000).toISOString(),maxDataAgeSeconds:300}};
+  const adapter = new adapterModule.exports.StormglassWeatherService({ withProviderRead:(_key,operation)=>operation(fixtureSource),requireOperational: () => {}, recordProviderSignal: async () => {} });
   const target = new Date(Date.now() + 2 * 86400000), window = forecastWindow(target.getTime());
   for (const bad of [null, {}, { hours: [null, {}, { time: 'bad' }] }, { hours: [{ time: target.toISOString() }] }, { hours: [{ time: target.toISOString(), windSpeed: { sg: null } }] }, { hours: [{ time: new Date(window.start - 1).toISOString(), waveHeight: { sg: 1 } }] }, { hours: [{ time: new Date(window.end + 1).toISOString(), waveHeight: { sg: 1 } }] }]) {
     payload = bad; await rejects(() => adapter.snapshot(18.2, 42.5, target), 503);

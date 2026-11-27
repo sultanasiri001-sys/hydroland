@@ -59,7 +59,7 @@ export function validateSourceSnapshot(input: unknown): asserts input is SourceS
   if (sourceDigest({organizationId:input.organizationId,records:input.records,bindings:input.bindings})!==input.fingerprint || Buffer.byteLength(JSON.stringify(input))>64000) throw new SourceInputError('بصمة مصدر المستند غير مطابقة.');
 }
 export function sourceSnapshot(payload: Record<string, unknown>, organizationId?: string): SourceSnapshot | null {
-  if (!Object.hasOwn(payload,PLATFORM_SOURCE_KEY)) return null;
+  if (!Object.prototype.hasOwnProperty.call(payload,PLATFORM_SOURCE_KEY)) return null;
   const snapshot=payload[PLATFORM_SOURCE_KEY];validateSourceSnapshot(snapshot);
   if (organizationId && snapshot.organizationId!==organizationId) throw new SourceInputError('مصدر المستند لا يطابق الجهة.');
   return snapshot;

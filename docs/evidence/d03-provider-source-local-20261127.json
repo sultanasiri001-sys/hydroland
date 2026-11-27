@@ -1,0 +1,73 @@
+{
+  "scope": "D03 / HYD-55 / D03.01",
+  "baseline": "ed5a68bff706f901d7e2b198bf2ca8365fb0d665",
+  "verifiedAt": "2026-11-27T12:42:25.932729+00:00",
+  "environment": "Disposable loopback PostgreSQL and local Chromium; source and provider responses are synthetic.",
+  "checks": {
+    "providerPolicyUnitGroups": 10,
+    "providerNativePostgresChecks": 41,
+    "legacyWeatherPostgresChecks": 29,
+    "coordinateAssertions": 225,
+    "weatherContextAssertions": 118,
+    "calendarAssertions": 16,
+    "calendarDecisionCombinations": 1080,
+    "browserCases": 10,
+    "localMapsWeatherReadinessHttp": "PASS",
+    "apiBuild": "PASS",
+    "apiLint": "PASS",
+    "existingReadinessValidators": "PASS"
+  },
+  "externalBoundaries": {
+    "realProviderCalls": 0,
+    "realHumanApprovals": 0,
+    "productionAuthorized": false,
+    "actualProviderOrLicenseAcceptance": "Q01",
+    "D11": "REQUESTED_NOT_GRANTED",
+    "D16": "REQUESTED_NOT_GRANTED"
+  },
+  "sourceFiles": {
+    "apps/api/scripts/maps-runtime-http-e2e.mjs": "b641ad764da2a50ffa6007c53090961738e175634487d711e6c2655cfe9f7448",
+    "apps/api/scripts/marinetraffic-ais-validation.mjs": "c446ac62ef016ee924ce1ecba5d8dc3b43366a4415c4ffa9aa1d3ab2e174465f",
+    "apps/api/scripts/provider-read-fixture.mjs": "23313515be224fcc0c337410a656581c2572b74329735b8ae0ca0f2aeb5e7ac5",
+    "apps/api/scripts/provider-read-native-db-e2e.mjs": "c9b38ad533094e2527c94ae5cb3e33eae4f3b0cdddcb8e016030f1a311c73aca",
+    "apps/api/scripts/provider-read-policy.test.cjs": "c46c6e4ec6d7747d99f748a1d93aeec793009f40ff1ac78cd2baccf4cad65aee",
+    "apps/api/scripts/provider-read-test-support.mjs": "947f3ea439a8fe6bc09b6f4e1d1a499726239efb5e138384523d4c24cb5c7665",
+    "apps/api/scripts/safety-coordinate-validation.cjs": "30923f9aed4731ff364102168a47e19e5be3ad4933bd5f6df6cc94b50bad967e",
+    "apps/api/scripts/stage3-readiness-payload-contract-validation.mjs": "088f16a4d8a4d2835feb2edc916dd72e80db3adeb861b1cc8653d2af072a89ea",
+    "apps/api/scripts/weather-review-context-db-e2e.mjs": "3e3baee776227170b35ac6a658ee3ce1d9d37aa92a1dcd0347c1dbb6ca7320d7",
+    "apps/api/scripts/weather-review-context-validation.cjs": "ab84bac4e1daa085109eaf6fb96623a4a6022d7f49684d5eab4509302edf4c46",
+    "apps/api/src/audit/audit.service.ts": "74387f79894516c217a77540552bc5577859fe5b952640b819585b2fb05baeb7",
+    "apps/api/src/integrations/distress-ais-readiness.controller.ts": "7539d3170a16c734c93d9debe6d45d36ba5f73efaeaf024164a88e12debe8541",
+    "apps/api/src/integrations/integration.controller.ts": "1a57cc7583bc2f99d37afb107588a6327dde8bdb47ab249f1892dd52a979e238",
+    "apps/api/src/integrations/integration.service.ts": "5978fc0b610745c499733a8537336194c4bc6a72907b6add98be7603fe4ba24e",
+    "apps/api/src/integrations/integration.types.ts": "eacfe401ab8346751c2825e369a1d628dabe20f710b06c40171ef1ee8f614a61",
+    "apps/api/src/integrations/marinetraffic-ais.service.ts": "ffb241a942a0949a4bb0dfbba233b8b127403880cff5aa10b60453f2f8731d81",
+    "apps/api/src/integrations/provider-read-http.ts": "adb6ec18ecb1686352c85033ed6ab3e6ec6110907f9080824cfafb3ae9e4b735",
+    "apps/api/src/integrations/provider-read-policy.ts": "e2e4944cd1e6f93e834f46e2017e82e4889261a56fa60535b935ca04586384ec",
+    "apps/api/src/integrations/provider-read-source.ts": "1786fcfd20d433b17a51037389e93de8a079ebed14ed00c3c73d42d5808051e1",
+    "apps/api/src/safety/safety-distress.service.ts": "04128a7122ba32a05ce6b138faaae9fff9d0e9d0674948e8c716453a0d31e5ba",
+    "apps/api/src/trips/stormglass-weather.service.ts": "2f40c61a815f408e54efe79d8ccf68dc5e8a99debb1e0b1013ccb1c98f417b38",
+    "apps/api/src/trips/trip-weather-review.service.ts": "decc96b7c66f69389e0588d70c2566554f9e07fbd8bacfb6c4fad28188632435",
+    "apps/api/src/trips/trips.service.ts": "9173d722085ddca1c59f21c61f81b04f6aa453683677afcb0299b5fc094c71d5",
+    "apps/api/src/trips/weather-gate.service.ts": "40fc7d2e54201ee30ec603803efd088c77aedca99e58f0de534e0b340046f465",
+    "apps/api/src/trips/weather-review-context.ts": "8ab70a2de7aecca02b268542da65daf98d6b59ecb19caefac8a9ad063674b513",
+    "apps/web/e2e/map-bootstrap-state.spec.js": "47b380241cb8358ec85077b5ea324dd60a40e9231b6d22b16cc910ff958c6587",
+    "apps/web/e2e/maps-booking-location.spec.js": "2d1513ae29f60e27a0a35e4b914287478732e09c443264e09b6867142293b40d",
+    "apps/web/e2e/provider-source-boundaries.spec.js": "423b761389e57670e334d6c0dd50d708879012b0e1ca80227405d1c1c90072fa",
+    "apps/web/src/hydroland-map.css": "981087a1a0be8c15461f3ba12c22935d62f6161363da51a731ab5f0a81948721",
+    "apps/web/src/hydroland-map.js": "30112b7810c2ff68667c4d08bbbedb5c689236206f6d6a51f6f75b1841c7108a",
+    "apps/web/src/hydroland-weather-admin.js": "575c04670ceab9b97c60442c310bb46d39e6519aeabea35ab4418e99aac93fbb"
+  },
+  "evidenceLogs": {
+    "white-d03-native.log": "44dc4fb8c71f395e08ba263a1620afa8a7b41e54b40ccf4ee750de3e46fa15eb",
+    "white-d03-browser.log": "183220bb00acb28a3e3638635e572dc020317c1e77db8c0d952ba23f14419852",
+    "white-d03-build.log": "782291d814c9109e9809794e467ccbcb2f2444202554978fcbf66e3b354b23c3"
+  },
+  "limitations": [
+    "No final CI or deployment claim is made by this local receipt.",
+    "No schema change or new migration.",
+    "Existing source-free weather approvals require refresh; no operating-policy setting is changed.",
+    "Direct browser maps require reviewed public distribution with no per-request charge and no account request quota; view bounds do not enforce paid-provider spending.",
+    "Reservations are conservative request/cost bounds, not confirmed actual billing."
+  ]
+}

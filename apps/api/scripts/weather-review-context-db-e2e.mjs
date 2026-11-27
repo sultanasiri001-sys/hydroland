@@ -15,7 +15,7 @@ const check = (ok, label) => { assert.ok(ok, label); checks++; console.log('PASS
 const conflict = async (fn, label, status = 409) => { await assert.rejects(fn, e => e.getStatus?.() === status, label); checks++; console.log('PASS', label); };
 global.fetch = async () => { throw new Error('Network/provider calls prohibited in local DB regression.'); };
 let source;
-const provider = { snapshot: async () => { providerCalls++; return typeof source === 'function' ? source() : structuredClone(source); } };
+const provider = { sourceCurrent:async()=>true, snapshot: async () => { providerCalls++; return typeof source === 'function' ? source() : structuredClone(source); } };
 const service = new TripWeatherReviewService(db, provider, { record: async (event, tx) => { assert.ok(tx, 'Audit must share the transaction'); await realAudit.record(event, tx); if (failAudit) throw new Error('Isolated audit failure'); } });
 try {
   const sql = readFileSync(new URL('../prisma/migrations/20260925210500_trip_weather_runtime/migration.sql', import.meta.url), 'utf8');

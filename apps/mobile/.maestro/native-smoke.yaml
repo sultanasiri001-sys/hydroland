@@ -1,0 +1,54 @@
+appId: com.hydroland.acceptance
+name: Native installation, guest UI and encrypted-storage capabilities
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible:
+      id: home-login
+    timeout: 30000
+- takeScreenshot: home
+- tapOn:
+    id: home-login
+- assertVisible:
+    id: login-email
+- assertVisible:
+    id: login-password
+- tapOn:
+    id: login-submit
+- assertVisible:
+    id: login-error
+- takeScreenshot: login-validation
+- openLink: hydroland-qa://native-acceptance
+- runFlow:
+    when:
+      platform: iOS
+      visible: 'Open in .*HYDROLAND QA.*'
+    commands:
+      - tapOn:
+          text: Open
+      - extendedWaitUntil:
+          notVisible: 'Open in .*HYDROLAND QA.*'
+          timeout: 10000
+      - takeScreenshot: ios-link-consent-state
+      - openLink: hydroland-qa://native-acceptance
+- extendedWaitUntil:
+    visible:
+      id: native-capabilities-run
+    timeout: 20000
+- tapOn:
+    id: native-capabilities-run
+- extendedWaitUntil:
+    visible:
+      id: native-capabilities-result
+      text: PASS
+    timeout: 30000
+- takeScreenshot: native-capabilities
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: home-login
+    timeout: 30000

@@ -20,7 +20,7 @@ test('guest can open trip map and authenticated booking renders location object 
     window.HydrolandMapLibreTestDouble={Map:FakeMap,Marker:FakeMarker,Popup:FakePopup,LngLatBounds:FakeBounds,NavigationControl:class{}};
   });
   await installProfileApi(page);
-  await page.route(/\/api\/v1\/integrations\/maps\/public-config$/,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({engine:'MAPLIBRE',engineVersion:'6.11.2',status:'SANDBOX',provider:'E2E_MAPS',enabled:true,styleUrl:'https://maps.hydroland.test/style.json',attribution:'E2E'})}));
+  await page.route(/\/api\/v1\/integrations\/maps\/public-config$/,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({engine:'MAPLIBRE',engineVersion:'6.11.2',status:'SANDBOX',provider:'E2E_MAPS',enabled:true,purpose:'INFORMATION_ONLY',automaticSafetyPermission:false,validUntil:new Date(Date.now()+3600000).toISOString(),allowedOrigins:['https://maps.hydroland.test'],maxResourcesPerView:100,styleUrl:'https://maps.hydroland.test/style.json',attribution:'E2E'})}));
   await page.route(/\/api\/v1\/trips$/,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(trips)}));
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
