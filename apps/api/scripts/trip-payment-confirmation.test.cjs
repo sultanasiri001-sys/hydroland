@@ -11,7 +11,7 @@ const { captureTripBookingContract, tripBookingPaymentRequirement, satisfiesTrip
 
 global.fetch = () => { throw new Error('Network is forbidden in payment confirmation tests'); };
 
-function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED' } = {}) {
+function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED', participationMode = 'REVIEW' } = {}) {
   const now = new Date(), start = new Date(now.getTime() + 20 * 86_400_000), end = new Date(start.getTime() + 86_400_000);
   const trip = { id: 'trip-1', title: 'Frozen quote', type: 'SHORE', status: 'OPEN', startsAt: start, endsAt: end,
     capacity: 10, updatedAt: now, organizationId: 'center-1', organization: { id: 'center-1', displayName: 'Supplying center' } };
@@ -51,6 +51,10 @@ function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED
       { id: 'p1', fullName: 'One', eligibilityStatus: 'ELIGIBLE', certificationTitle: 'Fixture', updatedAt: now },
       { id: 'p2', fullName: 'Two', eligibilityStatus: 'ELIGIBLE', certificationTitle: 'Fixture', updatedAt: now },
     ] },
+    // The financial unit fixture has no adopted participation source. Keep its
+    // review requirement visible; native D01 proof belongs to the HTTP/PG suite.
+    participationCase: { findUnique: async () => state.corruptParticipationSource
+      ? { id: 'case', revision: 1, digest: 'invalid', state: { schemaVersion: 0 } } : null },
     calendarEvent: { findUnique: async () => organizationId && !state.noCalendar ? {
       id: 'calendar-trip', organizationId: trip.organizationId, status:'ACTIVE', startsAt: start, endsAt: end,
       allocations: [{id:'allocation',resourceId:'site',startsAt:start,endsAt:end,resource:{active:true,type:'SITE'}}],
@@ -60,9 +64,9 @@ function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED
     auditEvent: { findFirst: async () => null },
   };
   const db = { ...tx, serializable: async callback => callback(tx) };
-  const policies = { decision: async category => {
-    const state = category === 'PAYMENT' ? paymentMode : 'ENABLED';
-    return { state, bypass: state === 'DISABLED', review: state === 'OPTIONAL', enforce: state === 'ENABLED' };
+  const policies = { decision: async (category, ruleKey) => {
+    const state = category === 'PAYMENT' ? paymentMode : category === 'BOOKING' && ruleKey === 'PARTICIPANT_ELIGIBILITY' ? participationMode : 'ENABLED';
+    return { state, bypass: state === 'DISABLED', review: ['OPTIONAL', 'REVIEW'].includes(state), enforce: state === 'ENABLED' };
   } };
   const weather = { settings: async () => ({ enabled: false }), evaluateReview: () => ({ blocking: false, decision: 'ALLOW' }) };
   const reviews = { latest: async () => null };
@@ -70,6 +74,28 @@ function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED
   return { state, context, guard: new PaymentConfirmationGuard(db, policies),
     management: new BookingManagementService(db, {}, policies, weather, reviews, {}) };
 }
+
+test('financial fixture retains an explicit unresolved participation review', async () => {
+  const { management } = fixture();
+  const view = await management.detail('admin', 'booking-1', 'admin');
+  assert.equal(view.policyReview.required, true);
+  assert.ok(view.policyReview.issues.includes('PARTICIPATION_SOURCE_REVIEW_REQUIRED'));
+  assert.ok(view.participation.every(row => row.status === 'ACTION_REQUIRED' && row.ready === false));
+});
+
+test('payment cannot bypass missing enforced or corrupt adopted participation evidence', async () => {
+  const enforced = fixture({ participationMode: 'ENABLED' });
+  const missing = await enforced.management.detail('admin', 'booking-1', 'admin');
+  assert.equal(missing.paymentSatisfied, true);
+  assert.ok(!missing.actions.includes('CONFIRM'));
+  assert.ok(missing.blockers.includes('PARTICIPATION_SOURCE_REVIEW_REQUIRED'));
+  const adopted = fixture({ participationMode: 'REVIEW' });
+  adopted.state.corruptParticipationSource = true;
+  const corrupt = await adopted.management.detail('admin', 'booking-1', 'admin');
+  assert.ok(!corrupt.actions.includes('CONFIRM'));
+  assert.ok(corrupt.blockers.includes('PARTICIPATION_HISTORY_INVALID'));
+  assert.equal(adopted.state.writes, 0);
+});
 
 test('confirmation guard uses bound original price and requires unreversed provider-backed collection', async () => {
   const { state, context, guard } = fixture();

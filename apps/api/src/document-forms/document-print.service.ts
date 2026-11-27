@@ -7,6 +7,7 @@ import { assignedReviewAccess, documentReadHash } from './internal-document-revi
 import { isLibraryCode } from './contract-library.domain';
 import { PLATFORM_SOURCE_KEY, sourceSnapshot, sourcePrintFields } from './platform-document-source.domain';
 import { validateDocumentPayload } from './document-payload';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 export interface DocumentPrintContract {
   documentId:string;
@@ -33,6 +34,7 @@ export class DocumentPrintService {
   async contract(accountId:string,id:string):Promise<DocumentPrintContract>{
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true,lifecycleEvents:{where:{action:'CREATE'},orderBy:{occurredAt:'asc'},take:2}}});
     if(!d) throw new NotFoundException('Document not found.');
+    assertNotParticipationSource(d.template.code);
     if(isLibraryCode(d.template.code)) throw new BadRequestException('القالب ليس عقداً منفذاً؛ افتحه من مكتبة العقود.');
     const cooperation=d.template.code===COOPERATION_CODE?await this.cooperation.get(accountId,id):undefined;
     if(cooperation&&(cooperation.version!==d.version||cooperation.contentHash!==d.contentHash||(cooperation.status==='APPROVED')!==(d.status==='SIGNED'))) throw new BadRequestException('تغير العقد أثناء إعداد النسخة؛ أعد المحاولة.');

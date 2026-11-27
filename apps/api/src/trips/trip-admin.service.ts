@@ -10,6 +10,9 @@ import { OperationalClearanceService } from './operational-clearance.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
+import { randomUUID } from 'node:crypto';
+import { reviewParticipation } from '../participation/participation.service';
+import { hash as participationHash } from '../participation/participation.domain';
 
 export type TripStatusValue='DRAFT'|'OPEN'|'CLOSED'|'CANCELLED'|'COMPLETED';
 const TRIP_STATUSES:TripStatusValue[]=['DRAFT','OPEN','CLOSED','CANCELLED','COMPLETED'];
@@ -62,6 +65,7 @@ export class TripAdminService {
     const status=input?.status,reason=typeof input?.reason==='string'?input.reason.trim():'';
     const expectedAt=typeof input?.expectedUpdatedAt==='string'?new Date(input.expectedUpdatedAt):new Date(NaN);
     if(!['ELIGIBLE','REJECTED'].includes(status)||input?.reviewed!==true||reason.length<5||reason.length>1000||!Number.isFinite(expectedAt.getTime()))throw new BadRequestException('اختر القرار وأكد المراجعة وأضف ملاحظات من 5 إلى 1000 حرف.');
+    const occurrence={requestId:randomUUID(),eventId:randomUUID(),occurredAt:new Date(),fingerprint:participationHash({reviewerAccountId,tripId,bookingId,participantId,input})};
     const result=await this.db.serializable(async tx=>{
       const admin=await tx.roleAssignment.findFirst({where:{accountId:reviewerAccountId,role:'ADMIN',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
       if(!admin)throw new ForbiddenException('تتطلب مراجعة الأهلية حساب إدارة نشطًا.');
@@ -71,6 +75,9 @@ export class TripAdminService {
       const participant=await tx.bookingParticipant.findFirst({where:{id:participantId,bookingId}});
       if(!participant)throw new NotFoundException('Participant not found.');
       if(participant.updatedAt.getTime()!==expectedAt.getTime())throw new ConflictException('تغيرت بيانات المشارك؛ حدّث الحجوزات وراجعها مجددًا.');
+      const participationCase=await tx.participationCase.findUnique({where:{bookingParticipantId:participantId}});
+      if(participationCase)await reviewParticipation(tx,reviewerAccountId,participationCase,status,reason,occurrence);
+      else if(status==='ELIGIBLE')throw new ConflictException('استكمل حالة المشاركة ومصادر الموافقة والأهلية قبل اعتماد المشارك.');
       await tx.bookingParticipant.update({where:{id:participantId},data:{eligibilityStatus:status,updatedAt:new Date(Math.max(Date.now(),participant.updatedAt.getTime()+1))}});
       await tx.booking.update({where:{id:bookingId},data:{updatedAt:new Date(Math.max(Date.now(),booking.updatedAt.getTime()+1))}});
       const recipients=[...new Set([booking.accountId,...(participant.accountId?[participant.accountId]:[])])];

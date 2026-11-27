@@ -6,8 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 // Only the isolated adapter suite uses exception substitutes. No Nest/Prisma or production service is contacted.
 const exceptions = 'data:text/javascript,' + encodeURIComponent(['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(name => `export class ${name} extends Error {constructor(response){super(typeof response==='string'?response:response.message);this.response=response;}}`).join('\n'));
+// This dependency-free adapter suite checks the integration boundary. The native
+// source, consent and transaction proof is exercised by the D01 HTTP/PG gate.
+const participationAdapter = 'data:text/javascript,' + encodeURIComponent(`export async function participationTrainingGate(tx, enrollmentId, at) {
+  if (typeof tx.participationFixtureGate !== 'function') throw new Error('Explicit participation adapter fixture required');
+  return tx.participationFixtureGate(enrollmentId, at);
+}`);
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === '@nestjs/common') return { url: exceptions, shortCircuit: true };
+  if (specifier === '../participation/participation-evaluator') return { url: participationAdapter, shortCircuit: true };
   if (specifier.startsWith('.') && context.parentURL && !/\.[cm]?[jt]s$/.test(specifier)) {
     const candidate = new URL(specifier + '.ts', context.parentURL);
     if (existsSync(fileURLToPath(candidate))) return nextResolve(candidate.href, context);
@@ -73,8 +80,9 @@ test('aggregate session minutes cannot replace the v2 qualification contract',()
 function database() {
   const p=fixture(), hash=core.trainingStandardHash(p), profile={id:'profile',category:'TRAINING_STANDARD_PROFILE',ruleKey:'PROFILE',state:'APPROVED',updatedAt:new Date('2026-01-01'),metadata:{schemaVersion:1,profile:p,contentHash:hash,createdByAccountId:'author',approval:{profileHash:hash,reviewedByAccountId:'reviewer',approvalReference:'SYNTHETIC_REVIEW',reviewedAt:'2025-01-01',validUntil:'2099-01-01'}}};
   const enrollment={id:'enrollment',studentAccountId:'student',instructorAccountId:'instructor',courseCode:p.programCode,centerOrganizationId:'centre',status:'PENDING',enrolledAt:new Date(Date.now()-86400000),updatedAt:new Date('2026-01-01'),record:{id:'record',updatedAt:new Date('2026-01-01'),sessions:[],stages:[]},metadata:{trainingStandard:core.trainingStandardBinding('profile',p),trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:8}}};
-  const state={profile,enrollment,audits:[],assessments:[],documents:[],roleActive:true,instructorCredentials:[credential()],studentCredentials:[],birthday:new Date('2000-01-01'),writeCount:0};
+  const state={profile,enrollment,audits:[],assessments:[],documents:[],roleActive:true,instructorCredentials:[credential()],studentCredentials:[],birthday:new Date('2000-01-01'),writeCount:0,participationCalls:[],participationReady:true};
   const tx={
+    participationFixtureGate:async(enrollmentId,at)=>{assert.equal(enrollmentId,state.enrollment.id);state.participationCalls.push({enrollmentId,at});if(!state.participationReady)throw new Error('PARTICIPATION_NOT_CLEARED');return {ready:true};},
     roleAssignment:{findFirst:async({where})=>{const role=where.accountId==='instructor'?'INSTRUCTOR':'REVIEWER';return state.roleActive&&(typeof where.role==='string'?where.role===role:where.role.in.includes(role))?{id:'role',role,account:{person:{credentials:state.instructorCredentials}}}:null;}},
     policyControl:{findFirst:async()=>state.profile,findMany:async()=>[state.profile],create:async({data})=>{state.profile={...data,updatedAt:now()};state.writeCount++;return state.profile;},updateMany:async({where,data})=>{if(state.profile.updatedAt.getTime()!==where.updatedAt.getTime())return {count:0};Object.assign(state.profile,data);state.writeCount++;return {count:1};}},
     account:{findFirst:async({where})=>where.id==='instructor'?{person:{credentials:state.instructorCredentials}}:{diverProfile:{dateOfBirth:state.birthday},person:{credentials:state.studentCredentials}},findUniqueOrThrow:async()=>({diverProfile:{dateOfBirth:state.birthday}})},
@@ -83,7 +91,9 @@ function database() {
     trainingSession:{findFirst:async()=>null},organizationMember:{findFirst:async()=>({id:'member'})},managedDocument:{findMany:async()=>state.documents},auditEvent:{create:async({data})=>state.audits.push(data),findMany:async()=>state.assessments}
   };return {tx,state};
 }
-test('approved matching profile resolves from persisted server state',async()=>{const {tx,state}=database();const r=await store.assertTrainingStandardReady(tx,state.enrollment,'instructor');assert.equal(r.profile.agencyCode,'TEST_AGENCY');});
+test('approved matching profile resolves from persisted server state',async()=>{const {tx,state}=database();const r=await store.assertTrainingStandardReady(tx,state.enrollment,'instructor');assert.equal(r.profile.agencyCode,'TEST_AGENCY');assert.deepEqual(state.participationCalls.map(call=>call.enrollmentId),[state.enrollment.id]);});
+test('valid programme cannot bypass the independent participation gate',async()=>{const {tx,state}=database();state.participationReady=false;await assert.rejects(store.assertTrainingStandardReady(tx,state.enrollment,'instructor'),/PARTICIPATION_NOT_CLEARED/);assert.deepEqual(state.participationCalls.map(call=>call.enrollmentId),[state.enrollment.id]);assert.equal(state.writeCount,0);});
+test('historical activity time reaches the participation gate unchanged',async()=>{const {tx,state}=database();const at=new Date('2025-06-01T08:15:00.000Z');await store.assertTrainingStandardReady(tx,state.enrollment,'instructor',at);assert.equal(state.participationCalls.length,1);assert.equal(state.participationCalls[0].at,at);assert.equal(state.participationCalls[0].at.toISOString(),'2025-06-01T08:15:00.000Z');});
 for(const [name,change] of [
   ['missing binding',s=>s.enrollment.metadata={}],['draft',s=>s.profile.state='REVIEW'],['revoked',s=>s.profile.state='REVOKED'],['generic ENABLED flag',s=>s.profile.state='ENABLED'],
   ['expired source approval',s=>s.profile.metadata.approval.validUntil='2000-01-01'],['changed source',s=>s.profile.metadata.profile.edition='ALTERED'],['missing approval reference',s=>delete s.profile.metadata.approval.approvalReference],

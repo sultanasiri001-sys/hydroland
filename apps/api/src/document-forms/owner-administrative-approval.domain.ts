@@ -4,6 +4,7 @@ import { validateDocumentPayload } from './document-payload';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
 import { decisionDigest, plain, recordVersion } from './owner-administrative-decision.domain';
+import { assertNotParticipationSource, isParticipationSourceCode } from '../participation/participation-privacy';
 
 export const OWNER_APPROVAL_POLICY = 'OWNER_ADMINISTRATIVE_APPROVAL_V1';
 export const OWNER_APPROVAL_PREFIX = 'OWNER_ADMIN_APPROVAL:v1:';
@@ -22,6 +23,7 @@ export function administrativeEligibility(d: { organizationId: string; departmen
   approvedByAccountId: string | null; signedByAccountId: string | null; archivedByAccountId: string | null;
   template: { code: string; organizationId: string; department: string; fields: unknown } }) {
   const no = (reason: string) => ({ eligible: false, reason, purpose: null });
+  if (isParticipationSourceCode(d.template.code)) return no('SPECIALIZED_PARTICIPATION_WORKFLOW');
   if (d.template.code === COOPERATION_CODE || isLibraryCode(d.template.code)) return no('SPECIALIZED_CONTRACT_WORKFLOW');
   if (d.organizationId !== d.template.organizationId || d.department !== d.template.department || !(DOCUMENT_DEPARTMENTS as readonly string[]).includes(d.department)) return no('DEPARTMENT_MISMATCH');
   if (!['DRAFT', 'PENDING_APPROVAL'].includes(d.status) || d.approvedByAccountId || d.signedByAccountId || d.archivedByAccountId) return no('EXISTING_APPROVAL_OR_FINAL_STATE');
@@ -39,5 +41,6 @@ export function verifyApproval(value: unknown, org: string, doc: string, version
     || !plain(value.source.template) || !plain(value.source.branding) || typeof value.actorAccountId !== 'string'
     || typeof value.recordedAt !== 'string' || !Number.isFinite(Date.parse(value.recordedAt)) || value.independentReview !== false
     || value.electronicSignature !== false || value.originalWorkflowUnchanged !== true) throw new ConflictException('Stored owner-approval integrity check failed.');
+  assertNotParticipationSource(value.source.template.code);
   return value;
 }

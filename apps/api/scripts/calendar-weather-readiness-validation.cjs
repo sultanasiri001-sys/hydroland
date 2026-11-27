@@ -10,7 +10,11 @@ const snapshot={provider:'STORMGLASS',observedAt:startsAt.toISOString(),windSpee
 const canonical={status:'APPROVED',snapshot,context,fetchedAt:new Date(),requiresRefresh:false};
 const check=(ok,label)=>{assert.ok(ok,label);checks++;console.log('PASS',label);};
 async function read(review,{legacyDecision='ALLOWED',safetyDecision='ALLOWED',enabled=true,mode='ENFORCE',weatherPolicy='ENABLED',safetyPolicy='ENABLED',regulatoryPolicy='DISABLED',permitPolicy='DISABLED',complianceRecord={regulatoryStatus:'APPROVED',permitStatus:'APPROVED'}}={}){
- const db={trip:{findUnique:async()=>({id:'calendar-fixture'}),findMany:async()=>[{id:'calendar-fixture',title:'Fixture',type:'TEST',startsAt,endsAt,capacity:1,status:'OPEN',bookings:[],safetyChecklists:safetyDecision?[{decision:safetyDecision,items:{weather:{...snapshot,decision:legacyDecision}}}]:[]}]},$queryRaw:async(strings)=>{
+ let participantReads=0;
+ const db={trip:{findUnique:async()=>({id:'calendar-fixture'}),findMany:async()=>[{id:'calendar-fixture',title:'Fixture',type:'TEST',startsAt,endsAt,capacity:1,status:'OPEN',bookings:[],safetyChecklists:safetyDecision?[{decision:safetyDecision,items:{weather:{...snapshot,decision:legacyDecision}}}]:[]}]},bookingParticipant:{findMany:async query=>{
+  assert.deepEqual(query,{where:{booking:{tripId:'calendar-fixture',status:'CONFIRMED'}},select:{id:true},orderBy:{id:'asc'}});
+  participantReads++;return []; // This weather fixture has no bookings or confirmed participants.
+ }},$queryRaw:async(strings)=>{
   const sql=strings.join('');assert.match(sql,/^\s*SELECT/,'calendar readiness is read-only');
   return sql.includes('FROM "TripComplianceReview"')&&complianceRecord?[{tripId:'calendar-fixture',...complianceRecord}]:[];
  }};
@@ -19,6 +23,7 @@ async function read(review,{legacyDecision='ALLOWED',safetyDecision='ALLOWED',en
  let canonicalReads=0;
  const service=new CalendarAllocationService(db,{},gate,policies,{}, {evaluate:async()=>({blocked:false,reviewRequired:false,states:{}})},new TripComplianceService(db,policies,{}),{}, {latest:async id=>{assert.equal(id,'calendar-fixture');canonicalReads++;return review;},refresh:()=>{providerCalls++;throw Error('Readiness must not refresh provider');}});
  const [result]=await service.calendar('2036-09-01T00:00:00Z','2036-09-02T00:00:00Z');
+ assert.equal(participantReads,1);assert.equal(result.readiness.checks.participants,true);
  return {result,canonicalReads};
 }
 (async()=>{

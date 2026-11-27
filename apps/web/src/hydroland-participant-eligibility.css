@@ -1,0 +1,26 @@
+.hl-participant-eligibility{width:min(1080px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--hl-border,rgba(120,191,224,.24));border-radius:20px;background:var(--hl-surface,#102333);color:var(--hl-text,#edf7fb);overflow:auto}
+.hl-participant-eligibility::backdrop{background:rgba(4,15,25,.78)}
+.hl-participant-eligibility>header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;border-bottom:1px solid rgba(120,191,224,.16)}
+.hl-participant-eligibility h2,.hl-participant-eligibility h3,.hl-participant-eligibility p{margin:.2rem 0 .75rem}
+.hl-participant-eligibility [data-eligibility-body]{padding:1.25rem;display:grid;gap:1rem}
+.hl-participant-eligibility [data-eligibility-feedback]{padding:0 1.25rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.hl-participant-eligibility nav,.hl-participant-eligibility .hl-eligibility-actions{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+.hl-participant-eligibility button{font:inherit;border-radius:10px;padding:.6rem .85rem;border:1px solid rgba(120,191,224,.28);background:rgba(255,255,255,.055);color:inherit;cursor:pointer}
+.hl-participant-eligibility button:disabled{opacity:.55;cursor:default}
+.hl-participant-eligibility button:focus-visible,.hl-participant-eligibility input:focus-visible,.hl-participant-eligibility select:focus-visible,.hl-participant-eligibility textarea:focus-visible,.hl-participant-eligibility summary:focus-visible{outline:3px solid var(--hl-accent,#f1ca85);outline-offset:3px}
+.hl-participant-eligibility article,.hl-participant-eligibility fieldset,.hl-participant-eligibility .hl-eligibility-section{min-width:0;border:1px solid rgba(120,191,224,.18);border-radius:14px;padding:1rem;display:grid;gap:.65rem}
+.hl-participant-eligibility .hl-eligibility-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+.hl-participant-eligibility label{display:grid;gap:.35rem;min-width:0}
+.hl-participant-eligibility input:not([type=checkbox]),.hl-participant-eligibility select,.hl-participant-eligibility textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid rgba(120,191,224,.25);border-radius:9px;padding:.6rem;background:#0a1d2b;color:inherit;font:inherit}
+.hl-participant-eligibility textarea{min-height:5.5rem;resize:vertical}
+.hl-participant-eligibility .hl-eligibility-check{display:flex;align-items:flex-start;gap:.6rem}
+.hl-participant-eligibility .hl-eligibility-check input{margin-top:.3rem;flex:none}
+.hl-participant-eligibility .hl-eligibility-status{font-weight:700;color:#f1ca85}
+.hl-participant-eligibility .hl-eligibility-status[data-state=CLEARED]{color:#91e3c2}
+.hl-participant-eligibility .hl-eligibility-notice{padding:.8rem;border-inline-start:3px solid #f1ca85;background:rgba(241,202,133,.07)}
+.hl-participant-eligibility .hl-eligibility-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.hl-participant-eligibility dl{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:.4rem .8rem;margin:0}
+.hl-participant-eligibility dt{color:#b9d1dc}.hl-participant-eligibility dd{margin:0;overflow-wrap:anywhere}
+.hl-participant-eligibility .hl-eligibility-range{display:grid;gap:.4rem}
+.hl-participant-eligibility small{color:#b9d1dc}.hl-participant-eligibility [hidden]{display:none!important}
+@media(max-width:640px){.hl-participant-eligibility>header,.hl-participant-eligibility [data-eligibility-body]{padding:.9rem}.hl-participant-eligibility .hl-eligibility-grid{grid-template-columns:1fr}.hl-participant-eligibility dl{grid-template-columns:1fr}.hl-participant-eligibility dd{margin-bottom:.45rem}.hl-participant-eligibility .hl-eligibility-actions>button{flex:1 1 auto}}

@@ -91,8 +91,9 @@ export async function checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,p
   live=await session(live.id);
   check(live.evidence.studentCheckInSource==='CENTER'&&live.evidence.studentCheckInByAccountId===ownerA.id&&live.evidence.instructorCheckInAt===instructorStamp,'center provenance is explicit and prior self attendance preserved');
   check((await act(live,'START')).status===409,'both attendances do not allow training to start before scheduled time');
-  // Advance the isolated fixture clock without sleeping or forging HTTP evidence.
-  live=await db.trainingSession.update({where:{id:live.id},data:{startsAt:new Date(Date.now()-60000)}});
+  // Move the isolated session into its window after the native consent timestamp;
+  // retain the earlier-start denial without inventing a historical signature.
+  live=await db.trainingSession.update({where:{id:live.id},data:{startsAt:new Date((await standards.consentAt(liveCourse.id)).getTime()+1)}});
   const listed=await request(ta,'/center/me/training');const visible=listed.body.enrollments.find(row=>row.id===liveCourse.id).record.sessions.find(row=>row.id===live.id);
   check(visible.actions.includes('START')&&visible.attendance.studentRecordedByCenter&&!JSON.stringify(visible).includes(ownerA.id)&&!JSON.stringify(visible).includes('evidence'),'list returns safe attendance summary and current actions');
   r=await act(live,'START');check(r.status===200&&r.body.status==='IN_PROGRESS','attended session starts at scheduled time');
@@ -105,7 +106,7 @@ export async function checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,p
   check((await act(await session(adjacent.id),'CANCEL')).status===409,'cancel cannot duplicate audit or notice');
 
   const concurrentCourse=await course('SESSION-ATTENDANCE-RACE',students[1].id),concurrentRecord=await db.trainingRecord.create({data:{enrollmentId:concurrentCourse.id,status:'SCHEDULED'}});
-  const concurrent=await db.trainingSession.create({data:{trainingRecordId:concurrentRecord.id,instructorAccountId:pros[1].id,status:'CHECK_IN_OPEN',startsAt:new Date(Date.now()-60000),endsAt:new Date(Date.now()+3600000),evidence:{checkInOpenedAt:new Date().toISOString(),trainingStandardContext:standards.context}}});
+  const concurrent=await db.trainingSession.create({data:{trainingRecordId:concurrentRecord.id,instructorAccountId:pros[1].id,status:'CHECK_IN_OPEN',startsAt:new Date((await standards.consentAt(concurrentCourse.id)).getTime()+1),endsAt:new Date(Date.now()+3600000),evidence:{checkInOpenedAt:new Date().toISOString(),trainingStandardContext:standards.context}}});
   const attendanceRace=await Promise.all([act(concurrent,'INSTRUCTOR_CHECK_IN'),act(concurrent,'STUDENT_CHECK_IN')]);
   check(attendanceRace.filter(x=>x.status===200).length===1&&attendanceRace.filter(x=>x.status===409).length===1,'simultaneous attendance edits do not lose evidence');
   let latest=await session(concurrent.id);await act(latest,latest.evidence.instructorCheckInAt?'STUDENT_CHECK_IN':'INSTRUCTOR_CHECK_IN');latest=await session(concurrent.id);

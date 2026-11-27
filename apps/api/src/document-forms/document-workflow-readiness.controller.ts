@@ -6,6 +6,7 @@ import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
 import { assignedReviewAccess, readGrant, reviewKey } from './internal-document-review.domain';
 import { documentWorkflowReadiness } from './document-workflow-readiness';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 /** Private, scoped diagnostics only. No IAM, approval, signing, or setup writes. */
 @UseGuards(AccessTokenGuard)
@@ -28,6 +29,7 @@ export class DocumentWorkflowReadinessController {
           createdByAccountId: true, approvedByAccountId: true, template: { select: { code: true } } },
       });
       if (!record) throw new NotFoundException('Document not found in organization scope.');
+      assertNotParticipationSource(record.template.code);
       if (record.template.code === COOPERATION_CODE || isLibraryCode(record.template.code)) {
         throw new ForbiddenException('Use the specialized contract workflow.');
       }

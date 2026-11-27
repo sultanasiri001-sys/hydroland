@@ -8,6 +8,7 @@ import { readTrainingProgressionEvidence } from './training-progression-evidence
 import { assertTrainingCalendarAvailable } from '../trips/calendar-training-availability';
 import { evaluateDiveProgression, evaluateDivePlanning, DiveProgressionError } from './training-dive-progression';
 import { requireCourseCollection } from '../commerce/course-collection';
+import { participationTrainingGate } from '../participation/participation-evaluator';
 
 const CATEGORY = 'TRAINING_STANDARD_PROFILE';
 const json = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -162,6 +163,7 @@ export async function assertTrainingStandardReady(tx: Prisma.TransactionClient, 
   if (typeof context.plannedMaximumDepthMetres !== 'number' || !Number.isFinite(context.plannedMaximumDepthMetres) || context.plannedMaximumDepthMetres < 0 || context.plannedMaximumDepthMetres > limits.maximumDepthMetres) throw new ConflictException('حد العمق المخطط غير موثق أو يتجاوز حد البرنامج لهذا العمر والبيئة.');
   // Existing sessions are individual and the calendar forbids overlapping instructor assignments.
   // No capacity toggle can bypass these profile/qualification gates or increase group ratios.
+  await participationTrainingGate(tx, enrollment.id, at);
   return { profile, binding, limits };
 }
 export async function assertStandardSupervisionAvailable(tx: Prisma.TransactionClient, instructorAccountId: string, startsAt: Date, endsAt: Date | null, excludeId?: string) {

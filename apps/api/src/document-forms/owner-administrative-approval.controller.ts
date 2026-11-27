@@ -9,6 +9,7 @@ import { decisionDigest, plain, recordVersion, scopeId } from './owner-administr
 import { administrativeEligibility, approvalInput, approvalKey, OWNER_APPROVAL_NOTICE, OWNER_APPROVAL_POLICY, OWNER_APPROVAL_PREFIX, verifyApproval } from './owner-administrative-approval.domain';
 import { lockAccountIdentities } from '../admin/admin-authorization';
 import { renderOwnerApprovalPdf } from './owner-administrative-approval.pdf';
+import { assertNotParticipationSource, genericDocumentTemplateWhere } from '../participation/participation-privacy';
 
 type Actor = { auth: { accountId: string } };
 
@@ -42,6 +43,7 @@ export class OwnerAdministrativeApprovalController {
     const authority = await this.owner(tx, accountId, org);
     const d = await tx.managedDocument.findFirst({ where: { id, organizationId: org }, include: { template: true } });
     if (!d) throw new NotFoundException('Document not found in organization scope.');
+    assertNotParticipationSource(d.template.code);
     const eligibility = administrativeEligibility(d);
     return { d, eligibility, authority };
   }
@@ -67,7 +69,7 @@ export class OwnerAdministrativeApprovalController {
     scopeId(org);
     return this.db.serializable(async tx => {
       await this.owner(tx, r.auth.accountId, org);
-      const documents = await tx.managedDocument.findMany({ where: { organizationId: org }, select: { id: true, version: true, contentHash: true, payload: true } });
+      const documents = await tx.managedDocument.findMany({ where: { organizationId: org, template: genericDocumentTemplateWhere }, select: { id: true, version: true, contentHash: true, payload: true } });
       const rows = await tx.operationalSetting.findMany({ where: { key: { in: documents.map(d => approvalKey(org, d.id, d.version)) } } });
       const approvals = rows.map(row => {
         const d = documents.find(d => row.key === approvalKey(org, d.id, d.version))!;

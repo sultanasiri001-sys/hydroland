@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 const PAGE_SIZE = 25;
@@ -42,6 +43,7 @@ export class DocumentTemplateHistoryController {
       // Reuses owner-only internal access and organization membership checks.
       // Authorize before any template lookup, including missing/reserved codes.
       await this.authorization.assert(request.auth.accountId, organizationId, 'TEMPLATE_LIST', tx);
+      assertNotParticipationSource(code.toUpperCase());
       if (code.toUpperCase() === COOPERATION_CODE.toUpperCase() || isLibraryCode(code.toUpperCase())) {
         throw new BadRequestException('Use the contract library for contract template history.');
       }
