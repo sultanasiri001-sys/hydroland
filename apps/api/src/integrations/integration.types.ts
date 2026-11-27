@@ -3,6 +3,8 @@ export type IntegrationStatus = 'NOT_SELECTED' | 'SANDBOX' | 'CONFIGURED' | 'VER
 export interface IntegrationDescriptor { key:IntegrationKey; name:string; category:'marine'|'messaging'|'payments'|'storage'|'translation'|'maps'|'documents'|'certification'|'identity'|'regulatory'|'ai'; status:IntegrationStatus; requiresHumanApproval:boolean; supportsWebhook:boolean; }
 export interface VerifiedWebhook { provider:IntegrationKey; eventId:string; eventType:string; receivedAt:string; payload:Record<string,unknown>; }
 
+import type { MarineReadinessEvidence } from './marine-provider-evidence';
+
 export interface IntegrationReadinessPayload {
   service:string;
   integration:IntegrationKey;
@@ -16,12 +18,14 @@ export interface IntegrationReadinessPayload {
   timestamp:string;
 }
 
-export interface DistressAisReadinessPayload {
+export interface DistressAisReadinessPayload extends MarineReadinessEvidence {
   service:string;
   integration:'DISTRESS_AIS';
   status:IntegrationStatus;
   provider:string;
   aisReady:boolean;
+  aisConfigured:boolean;
+  dataFreshness:{status:'UNASSESSED';reasonCodes:string[]};
   distressReady:boolean;
   productionReady:boolean;
   sandboxReady:boolean;
@@ -45,7 +49,7 @@ export interface OfficialOnboardingReadinessPayload {
   timestamp:string;
 }
 
-export interface MapsPublicConfigPayload {
+export interface MapsPublicConfigPayload extends MarineReadinessEvidence {
   engine:'MAPLIBRE';
   engineVersion:string;
   status:IntegrationStatus;
@@ -53,11 +57,13 @@ export interface MapsPublicConfigPayload {
   enabled:boolean;
   styleUrl:string|null;
   attribution:string|null;
+  dataFreshness:{status:'NOT_ASSESSED';reasonCodes:string[]};
 }
 
-export interface WeatherPublicConfigPayload {
+export interface WeatherPublicConfigPayload extends MarineReadinessEvidence {
   status:IntegrationStatus;
   provider:'STORMGLASS';
   configured:boolean;
   sandbox:boolean;
+  dataFreshness:{status:'TRIP_REVIEW_REQUIRED';reasonCodes:string[]};
 }

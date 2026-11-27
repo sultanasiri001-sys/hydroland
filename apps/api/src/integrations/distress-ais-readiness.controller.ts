@@ -16,16 +16,20 @@ export class DistressAisReadinessController {
     const checks={
       lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',
       aisProviderConfigured:provider==='MARINETRAFFIC_AIS_ONLY',
-      aisCredentialsConfigured:Boolean(process.env.MARINETRAFFIC_API_KEY?.trim()),
+      aisCredentialsConfigured:/^[0-9a-f]{40}$/i.test(process.env.MARINETRAFFIC_API_KEY?.trim()||''),
       distressProviderConfigured:false,
     };
-    const aisReady=checks.lifecycleOperational&&checks.aisProviderConfigured&&checks.aisCredentialsConfigured;
+    const aisConfigured=checks.lifecycleOperational&&checks.aisProviderConfigured&&checks.aisCredentialsConfigured;
+    const aisReady=false;
     return{
       service:'hydroland-api',
       integration:'DISTRESS_AIS',
       status:integration.status,
       provider:checks.aisProviderConfigured?'MARINETRAFFIC_AIS_ONLY':'UNCONFIGURED',
       aisReady,
+      aisConfigured,
+      ...this.integrations.marineReadiness('DISTRESS_AIS',aisConfigured),
+      dataFreshness:{status:'UNASSESSED',reasonCodes:['OPERATIONAL_FRESHNESS_POLICY_NOT_VERIFIED']},
       distressReady:false,
       productionReady:false,
       sandboxReady:false,

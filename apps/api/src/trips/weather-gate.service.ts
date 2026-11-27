@@ -11,6 +11,7 @@ export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAV
 export type WeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 
 export type WeatherSnapshot = {
+  sourceEvidence?: { schemaVersion: 1; provider: 'STORMGLASS'; dataset: 'sg'; requestedFor: string; windowStart: string; windowEnd: string; dataDigest: string };
   forecastContext?: WeatherReviewContext;
   provider?: string;
   source?: string;

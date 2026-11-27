@@ -56,18 +56,22 @@ for(const marker of [
   "this.status('WEATHER_MARINE')",
   "credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim())",
   "provider:'STORMGLASS'",
-  'configured:operational&&credentialsConfigured',
+  'const configured=operational&&credentialsConfigured',
+  "...this.marineReadiness('WEATHER_MARINE',configured)",
   "sandbox:integration.status==='SANDBOX'",
 ])if(!service.includes(marker))throw new Error(`Sanitized weather readiness invariant missing: ${marker}`);
 if(!integrationController.includes("@Get('weather/public-config')")||!integrationController.includes('this.service.publicWeatherConfig()'))throw new Error('Public weather readiness route is missing.');
 if(/STORMGLASS_API_KEY\s*[:,]/.test(service))throw new Error('Public weather readiness must not expose the Stormglass API key.');
 for(const marker of [
   "request('/integrations/weather/public-config')",
-  "Stormglass · متصل",
-  "Stormglass · تجريبي",
-  "بانتظار إعداد المزود",
-  "setMarineWeatherState(uiLocale.message('غير مفعّل'))",
+  'providerObservation',
+  'providerAcceptance',
+  'usagePlan',
+  'license',
+  'dataFreshness',
+  "dot.classList.remove('ready')",
 ])if(!webMap.includes(marker))throw new Error(`Marine weather status UI invariant missing: ${marker}`);
+if(webMap.includes('Stormglass · متصل')||webMap.includes('الخريطة متصلة'))throw new Error('Configuration metadata must not claim a verified provider connection.');
 for(const marker of ["script.dataset.hlWeatherAdmin='1'","script.src='./hydroland-weather-admin.js'","if(role==='admin')ensureWeatherAdmin()"]){if(!webRoleDashboards.includes(marker))throw new Error(`Weather admin runtime loader missing: ${marker}`)}
 const bookingManagement=read('src/trips/booking-management.service.ts');
 if(!tripAdmin.includes("bookingManagement.legacy(reviewerAccountId,bookingId,'CONFIRM','admin',tripId)")||!bookingManagement.includes('this.weatherReviews.refresh(accountId, before.booking.tripId)')||!bookingManagement.includes('this.weather.evaluateReview(review?.snapshot, review?.status, settings, review?.context, review?.fetchedAt)')||!bookingManagement.includes("require(!evaluation.blocking, 'weather', 'WEATHER_GATE')"))throw new Error('Booking confirmation must use the shared transactional fresh weather approval gate.');

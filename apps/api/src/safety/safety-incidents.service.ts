@@ -22,6 +22,12 @@ export class SafetyIncidentsService{
   if(text.length>max)throw new BadRequestException('Value is too long.');
   return text;
  }
+ async assertReportContext(accountId:string,tripId:unknown){
+  if(tripId!==undefined&&tripId!==null&&(typeof tripId!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(tripId)))throw new BadRequestException('Invalid trip reference.');
+  const account=await this.db.account.findFirst({where:{id:accountId,status:'ACTIVE'},select:{id:true}});
+  if(!account)throw new ForbiddenException('An active reporting account is required.');
+  if(tripId){const trip=await this.db.trip.findUnique({where:{id:tripId as string},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');}
+ }
  async create(accountId:string,input:{tripId?:string;severity:IncidentSeverity;title:string;description:string;locationName?:string}){
   if(!severities.includes(input.severity))throw new BadRequestException('Invalid incident severity.');
   if(input.tripId){const trip=await this.db.trip.findUnique({where:{id:input.tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');}

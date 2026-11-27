@@ -178,22 +178,34 @@ function harness() {
   check(() => assert.equal(validWeatherReview({ windSpeedKph: 0, observedAt: past.startsAt, forecastContext: past }, past, new Date()), true));
   check(() => assert.equal(validWeatherReview(current.snapshot, current.context, current.fetchedAt), true));
 
-  // Isolated adapter VM: process.env is a fixture object, fetch is an in-memory response.
+  // Isolated adapter VM: process.env is a fixture object; only the transport
+  // collaborator is replaced. D03's native HTTP gate exercises the real bounded transport.
   // No real environment variables are read/changed, and no network request can occur.
   const filename = path.resolve(__dirname, '../dist/trips/stormglass-weather.service.js');
   const adapterModule = { exports: {} }; let payload, requests = 0;
-  const sandbox = { module: adapterModule, exports: adapterModule.exports, require: createRequire(filename), process: { env: { STORMGLASS_API_KEY: 'offline-fixture', STORMGLASS_API_BASE_URL: 'https://provider.invalid' } }, URL, AbortSignal, Date, fetch: async () => { requests++; return { ok: true, json: async () => payload }; } };
+  const adapterRequire = createRequire(filename), transport = adapterRequire('../integrations/marine-provider-transport');
+  const isolatedRequire = name => name === '../integrations/marine-provider-transport' ? {
+    marineProviderOrigin: () => 'https://provider.invalid', marineProviderFailure: transport.marineProviderFailure,
+    marineProviderJson: async (_provider, url) => { assert.equal(url.searchParams.get('source'), 'sg'); requests++; return { payload, responseHash: '0'.repeat(64), fetchedAt: new Date().toISOString() }; },
+  } : adapterRequire(name);
+  const sandbox = { module: adapterModule, exports: adapterModule.exports, require: isolatedRequire, process: { env: { STORMGLASS_API_KEY: 'offline-fixture' } }, URL, AbortSignal, Date };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
   const adapter = new adapterModule.exports.StormglassWeatherService({ requireOperational: () => {}, recordProviderSignal: async () => {} });
   const target = new Date(Date.now() + 2 * 86400000), window = forecastWindow(target.getTime());
   for (const bad of [null, {}, { hours: [null, {}, { time: 'bad' }] }, { hours: [{ time: target.toISOString() }] }, { hours: [{ time: target.toISOString(), windSpeed: { sg: null } }] }, { hours: [{ time: new Date(window.start - 1).toISOString(), waveHeight: { sg: 1 } }] }, { hours: [{ time: new Date(window.end + 1).toISOString(), waveHeight: { sg: 1 } }] }]) {
     payload = bad; await rejects(() => adapter.snapshot(18.2, 42.5, target), 503);
   }
+  for (const source of ['noaa', 'meteo']) {
+    payload = { hours: [{ time: target.toISOString(), windSpeed: { [source]: 12 } }] };
+    await rejects(() => adapter.snapshot(18.2, 42.5, target), 503);
+  }
   payload = { hours: [{ time: target.toISOString(), windSpeed: { sg: 0 }, gust: { sg: 2 } }] };
   const forecast = await adapter.snapshot(18.2, 42.5, target);
   check(() => assert.equal(forecast.windSpeedKph, 0));
   check(() => assert.equal(forecast.windGustKph, 7.2));
   check(() => assert.equal(forecast.waveHeightM, undefined));
+  check(() => assert.equal(forecast.sourceEvidence.dataset, 'sg'));
+  check(() => assert.match(forecast.sourceEvidence.dataDigest, /^[a-f0-9]{64}$/));
   payload = { hours: [{ time: new Date(window.start).toISOString(), waveHeight: { sg: 0 } }] };
   const boundary = await adapter.snapshot(18.2, 42.5, target);
   check(() => assert.equal(boundary.waveHeightM, 0));

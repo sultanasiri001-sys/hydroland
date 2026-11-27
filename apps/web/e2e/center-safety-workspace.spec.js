@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
+test.beforeEach(async({page})=>{await page.route('**/*',route=>{const host=new URL(route.request().url()).hostname;return ['127.0.0.1','localhost'].includes(host)?route.continue():route.abort()})});
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const trip={id:'safety-trip',title:'رحلة سلامة المركز',status:'OPEN',type:'BOAT',startsAt:'2030-01-02T07:00:00Z',updatedAt:'2030-01-01T07:00:00Z'};
 const keys=['diver_credentials','equipment_ready','oxygen_first_aid','boat_fuel','weather_review','emergency_plan'];
