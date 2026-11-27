@@ -1,6 +1,17 @@
 (() => {
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("organizations", {
+  "تجهيز الفوترة الإلكترونية": "Electronic invoicing setup",
+  "بيانات البائع اختيارية أثناء التجهيز. الربط مع الهيئة غير مفعّل.": "Seller details are optional during setup. Authority integration is inactive.",
+  "رقم تسجيل ضريبة القيمة المضافة": "VAT registration number",
+  "اسم الشارع": "Street",
+  "رقم المبنى": "Building number",
+  "الحي": "District",
+  "المدينة": "City",
+  "الرمز البريدي": "Postal code",
+  "معاينة فاتورة تجريبية وطباعتها": "Preview and print a sample invoice",
+  "تعذرت معاينة الفاتورة.": "The invoice preview could not be opened.",
+  "اسمح بفتح نافذة المعاينة من المتصفح.": "Allow the browser to open the preview window.",
   "فتح نموذج تفويض دفع الحجوزات": "Open the booking payment mandate form",
   "تعذر تجهيز نموذج التفويض.": "Unable to prepare the mandate form.",
   "عرض شروط الدفع باسم الجهة": "Review organization payment terms",
@@ -297,6 +308,16 @@
           <label>طريقة القبول<input name="acceptanceMethod" data-procurement-field maxlength="200" list="org-proc-acceptanceMethod"></label>
           <datalist id="org-proc-acceptanceMethod"><option>ميداني</option><option>عن بُعد</option><option>يُحدّد لاحقًا</option></datalist>
         </details>
+        <details><summary>تجهيز الفوترة الإلكترونية</summary>
+          <p>بيانات البائع اختيارية أثناء التجهيز. الربط مع الهيئة غير مفعّل.</p>
+          <label>رقم تسجيل ضريبة القيمة المضافة<input name="vatNumber" data-invoice-seller-field maxlength="15" inputmode="numeric"></label>
+          <label>اسم الشارع<input name="street" data-invoice-seller-field maxlength="150"></label>
+          <label>رقم المبنى<input name="buildingNumber" data-invoice-seller-field maxlength="4" inputmode="numeric"></label>
+          <label>الحي<input name="district" data-invoice-seller-field maxlength="150"></label>
+          <label>المدينة<input name="city" data-invoice-seller-field maxlength="150"></label>
+          <label>الرمز البريدي<input name="postalCode" data-invoice-seller-field maxlength="5" inputmode="numeric"></label>
+          <button type="button" data-invoice-preview>معاينة فاتورة تجريبية وطباعتها</button>
+        </details>
         <div class="hl-org-form-actions"><button type="submit">حفظ بيانات المنشأة</button><button type="button" data-org-financial-docs>مستندات المنشأة وإرفاق PDF</button><button type="button" data-org-mandate-template>فتح نموذج تفويض دفع الحجوزات</button></div>
       </form>
       <p data-org-financial-note role="status"></p>
@@ -378,7 +399,7 @@
   function closeFinancialProfile() {
     profileContext = null;
     profileForm.reset();
-    profileForm.querySelector('details').open = false;
+    for (const group of profileForm.querySelectorAll('details')) group.open = false;
     profileForm.hidden = true;
     profileSection.hidden = true;
     profileNote.textContent = '';
@@ -404,12 +425,27 @@
       profileForm.elements.registrationStatus.value = data.registrationStatus;
       context.hasProcurement = Boolean(data.procurement);
       for (const input of profileForm.querySelectorAll('[data-procurement-field]')) input.value = data.procurement?.[input.name] ?? '';
+      context.hasSeller = Boolean(data.invoiceSeller);
+      for (const input of profileForm.querySelectorAll('[data-invoice-seller-field]')) input.value = data.invoiceSeller?.[input.name] ?? '';
       context.revision = data.revision;
       profileForm.hidden = false;
       profileForm.querySelector('[type="submit"]').disabled = false;
       profileNote.textContent = '';
     } catch (error) { if (activeProfile(context)) setLocalErrorText(profileNote, error, ''); }
   }
+  profileForm.querySelector('[data-invoice-preview]').addEventListener('click', async () => {
+    const context = profileContext;
+    if (!context || !activeProfile(context) || context.revision === null) return;
+    const preview = window.open('about:blank', '_blank');
+    if (!preview) { uiLocale.setMessage(profileNote, uiLocale.message('اسمح بفتح نافذة المعاينة من المتصفح.')); return; }
+    preview.opener = null;
+    try {
+      const [module, seller] = await Promise.all([import('./hydroland-invoice-preview.js'),
+        request('/documents/organizations/' + encodeURIComponent(context.organizationId) + '/invoice-preview-seller')]);
+      if (!activeProfile(context) || seller.organizationId !== context.organizationId) { preview.close(); return; }
+      if (!preview.closed) await module.showInvoicePreview(preview, seller);
+    } catch (error) { preview.close(); if (activeProfile(context)) setLocalErrorText(profileNote, error, 'تعذرت معاينة الفاتورة.'); }
+  });
   profileSection.querySelector('[data-org-financial-close]').addEventListener('click', closeFinancialProfile);
   profileForm.querySelector('[data-org-financial-docs]').addEventListener('click', () => {
     if (!profileContext || !activeProfile(profileContext)) return;
@@ -458,6 +494,11 @@
     if (submit.disabled) return;
     submit.disabled = true;
     const body = { currency: 'SAR', taxStatus: profileForm.elements.taxStatus.value, registrationStatus: profileForm.elements.registrationStatus.value, expectedRevision: context.revision };
+    const invoiceSeller = {};
+    for (const input of profileForm.querySelectorAll('[data-invoice-seller-field]')) {
+      if (input.value.trim()) invoiceSeller[input.name] = input.value.trim();
+    }
+    if (Object.keys(invoiceSeller).length || context.hasSeller) body.invoiceSeller = invoiceSeller;
     const procurement = {};
     for (const input of profileForm.querySelectorAll('[data-procurement-field]')) {
       if (input.value.trim()) procurement[input.name] = input.value.trim();
@@ -469,6 +510,7 @@
       });
       if (!activeProfile(context)) return;
       context.revision = saved.revision;
+      context.hasSeller = Boolean(saved.invoiceSeller);
       context.hasProcurement = Boolean(saved.procurement);
       uiLocale.setMessage(profileNote, uiLocale.message('حُفظت بيانات المنشأة.'));
     } catch (error) {

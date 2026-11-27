@@ -1,4 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { Script } from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,10 +40,22 @@ const cssFiles = entries.filter(entry => entry.isFile() && entry.name.endsWith('
 const css = (await Promise.all(cssFiles.map(name => readFile(path.join(src, name), 'utf8')))).join('\n');
 for (const token of ['@media','prefers-reduced-motion',':focus-visible']) if (!css.includes(token)) throw new Error(`Missing responsive/accessibility rule: ${token}`);
 
-const jsFiles = entries.filter(entry => entry.isFile() && entry.name.endsWith('.js')).map(entry => entry.name);
+const browserModules = new Set([
+  'hydroland-invoice-preview.js',
+  'hydroland-membership-pass.js',
+  'hydroland-membership-qr.js',
+  'hydroland-membership-time.js',
+]);
+const jsFiles = entries.filter(entry => entry.isFile() && /\.m?js$/.test(entry.name)).map(entry => entry.name);
 for (const name of jsFiles) {
   const code = await readFile(path.join(src, name), 'utf8');
-  try { new Function(code.replace(/^export .*$/gm,'')); }
+  try {
+    if (name.endsWith('.mjs') || browserModules.has(name)) {
+      execFileSync(process.execPath, ['--input-type=module', '--check'], { input: code, stdio: 'pipe' });
+    } else {
+      new Script(code, { filename: name });
+    }
+  }
   catch (error) { throw new Error(`JavaScript syntax error in ${name}: ${error.message}`); }
 }
 

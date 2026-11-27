@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, readdir } from 'node:fs/promises';
+import { cp, mkdir, rm, readdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -11,6 +11,26 @@ await mkdir(dist, { recursive: true });
 await cp(path.join(root, 'src'), dist, { recursive: true });
 await cp(path.join(root, 'public'), dist, { recursive: true });
 console.log('HYDROLAND web built in apps/web/dist');
+
+const identity = path.resolve(root, '../api/src/document-forms');
+const receiptAssets = path.join(dist, 'assets/document-identity-v2');
+await mkdir(receiptAssets, { recursive: true });
+for (const asset of ['fonts/Tajawal-Approved-Regular.ttf', 'fonts/Tajawal-Approved-Bold.ttf', 'fonts/Tajawal-Approved-OFL.txt', 'identity/hydroland-mark-approved-v2.png']) {
+  await cp(path.join(identity, asset), path.join(receiptAssets, path.basename(asset)));
+}
+
+// The print window must be able to render both formats without further requests.
+let receiptCss = await readFile(path.join(dist, 'hydroland-invoice-preview.css'), 'utf8');
+for (const weight of ['Regular', 'Bold']) {
+  const font = `Tajawal-Approved-${weight}.ttf`;
+  const bytes = await readFile(path.join(receiptAssets, font));
+  receiptCss = receiptCss.replace(`./assets/document-identity-v2/${font}`, `data:font/ttf;base64,${bytes.toString('base64')}`);
+}
+const mark = await readFile(path.join(receiptAssets, 'hydroland-mark-approved-v2.png'));
+await writeFile(path.join(receiptAssets, 'invoice-print.json'), JSON.stringify({
+  css: receiptCss,
+  logo: `data:image/png;base64,${mark.toString('base64')}`,
+}));
 
 const vendor=path.join(dist,'vendor/license-reader');
 await mkdir(path.join(vendor,'core'),{recursive:true});
