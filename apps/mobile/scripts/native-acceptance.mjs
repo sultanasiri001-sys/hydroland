@@ -127,20 +127,27 @@ if (operation === 'prepare') {
   const frameworks = path.join(app, 'Frameworks');
   const frameworkEntries = fs.readdirSync(frameworks, { withFileTypes: true });
   assert(frameworkEntries.length > 0 && frameworkEntries.every(entry => entry.isDirectory() && entry.name.endsWith('.framework')), 'Review unexpected embedded code before signing this QA bundle.');
+  assert.deepEqual(frameworkEntries.map(entry => entry.name).sort(), [
+    'ExpoFileSystem.framework', 'ExpoFont.framework', 'ExpoModulesCore.framework', 'ExpoModulesJSI.framework',
+    'ExpoModulesWorklets.framework', 'React.framework', 'ReactNativeDependencies.framework', 'hermesvm.framework',
+  ].sort(), 'Review changes to the pinned embedded framework set before QA signing.');
   const iosEmbeddedSignatures = frameworkEntries.sort((a, b) => a.name.localeCompare(b.name)).map((entry, index) => {
     const framework = path.join(frameworks, entry.name);
-    // Hermes has a linker-only ad-hoc CodeDirectory after unsigned Xcode builds.
-    // Add its missing framework envelope without any application entitlements.
-    // Already signed frameworks must verify as-is; no fallback hides failures.
-    const envelopeAdded = !fs.existsSync(path.join(framework, '_CodeSignature', 'CodeResources'));
-    if (envelopeAdded) run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', framework]);
-    return {name: entry.name, envelopeAdded, ...inspectIosQaSignature(framework, 'ios-embedded-' + index, true)};
+    // Sign the final embedded QA output, after Xcode/CocoaPods copy and strip.
+    // ReactNativeDependencies gains privacy bundles after its prebuilt seal was
+    // created, while Hermes has only a linker signature. Neither old envelope
+    // describes the final embedded resources when CODE_SIGNING_ALLOWED=NO.
+    // This explicit signing step grants no entitlements and has no failure
+    // fallback. Every resulting framework still must pass strict verification.
+    const priorResourceEnvelopePresent = fs.existsSync(path.join(framework, '_CodeSignature', 'CodeResources'));
+    run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', framework]);
+    return {name: entry.name, envelopeAdded: !priorResourceEnvelopePresent, priorResourceEnvelopePresent, qaSignedAfterEmbedding: true, ...inspectIosQaSignature(framework, 'ios-embedded-' + index, true)};
   });
   const requestedEntitlements = path.join(artifacts, platform, 'ios-qa-entitlements.plist');
   fs.writeFileSync(requestedEntitlements, JSON.stringify(IOS_QA_ENTITLEMENTS));
   run('/usr/bin/plutil', ['-convert', 'xml1', requestedEntitlements]);
-  // Sign only the QA app envelope. Its embedded frameworks retain their own
-  // signatures and receive no app/keychain entitlements; --deep is verify-only.
+  // Sign the QA app envelope after its frameworks. Frameworks retain their own
+  // identities and receive no app/keychain entitlements; --deep is verify-only.
   run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', '--generate-entitlement-der', '--entitlements', requestedEntitlements, app]);
   const iosSignature = inspectIosQaSignature(app, 'ios-build');
   const archive = path.join(artifacts, platform, 'hydroland-ios-simulator.app.tar.gz');

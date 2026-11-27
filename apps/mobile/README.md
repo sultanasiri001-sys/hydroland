@@ -44,8 +44,13 @@ SecureStore can use its own Keychain group. The only entitlements are
 `application-identifier` and `keychain-access-groups`, both bound to
 `HYDROQA001.com.hydroland.acceptance`. `HYDROQA001` is a synthetic local test prefix,
 not an Apple developer team. Embedded frameworks receive no application
-entitlements. A framework left with only a linker signature, such as Hermes,
-gets its own ad-hoc resource envelope; existing envelopes must verify unchanged.
+entitlements. After Xcode/CocoaPods finish copying and stripping the pinned
+framework set, each framework gets its own ad-hoc signature over the final
+embedded resources. A prebuilt seal can become stale when privacy resource
+bundles are embedded, and Hermes can have only a linker signature. This is an
+explicit QA build step, not a fallback after failed verification. The resulting
+framework signatures must all verify strictly under their own identities with
+empty entitlements; unexpected framework names stop the build for review.
 The runner verifies the app and nested signatures, reads back the actual
 entitlements and ad-hoc metadata, and repeats verification on the installed
 simulator bundle. The installed CodeDirectory hash must match the built app.
