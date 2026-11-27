@@ -61,11 +61,12 @@
   "جوال الطوارئ": "Emergency mobile number",
   "صلة القرابة": "Relationship",
   "فصيلة الدم": "Blood group",
-  "حالة اللياقة الطبية": "Medical fitness status",
-  "لائق": "Fit",
-  "تحتاج مراجعة": "Review needed",
-  "غير لائق": "Unfit",
-  "انتهاء الفحص الطبي": "Medical examination expiry",
+  "الحالة الصحية المصرّح بها ذاتيًا": "Self-reported health status",
+  "أصرّح بأنني لائق": "I report that I am fit",
+  "أطلب مراجعة حالتي": "I request a review",
+  "أصرّح بأنني غير لائق": "I report that I am unfit",
+  "تاريخ الانتهاء المُدخل ذاتيًا": "Self-reported expiry date",
+  "هذه بيانات تُدخلها بنفسك. حفظ الحالة أو التاريخ لا يمنح تصريحًا طبيًا أو أهلية للمشاركة؛ تُراجع المتطلبات والأدلة بحسب الخدمة ومصدرها.": "You enter these details yourself. Saving a status or date does not grant medical clearance or participation eligibility. Requirements and evidence are reviewed for the service and its source.",
   "إعادة المحاولة": "Retry",
   "حفظ بيانات الغواص": "Save diver details",
   "أدخل اسم جهة اتصال الطوارئ ورقمها معًا، أو اتركهما فارغين.": "Enter both the emergency contact name and number, or leave both blank.",
@@ -207,7 +208,7 @@
   const ensureDiverEditor=()=>{
     let dialog=document.getElementById('hl-diver-editor');if(dialog)return dialog;
     dialog=document.createElement('dialog');dialog.id='hl-diver-editor';dialog.className='hl-profile-editor';
-    uiLocale.setHTML(dialog, uiLocale.html`<form><header><div><small>DIVER PROFILE · ملف الغواص</small><h2>بيانات الغواص والطوارئ</h2></div><button type="button" data-diver-close aria-label="إغلاق">×</button></header><div class="hl-profile-editor-grid"><label>الجوال الأساسي<input name="primaryPhone" type="tel" maxlength="30"></label><label>الجنسية<input name="nationality" maxlength="80"></label><label>اسم جهة اتصال الطوارئ<input name="emergencyName" maxlength="120"></label><label>جوال الطوارئ<input name="emergencyPhone" type="tel" maxlength="30"></label><label>صلة القرابة<input name="emergencyRelation" maxlength="80"></label><label>فصيلة الدم<input name="bloodType" maxlength="10"></label><label>حالة اللياقة الطبية<select name="medicalFitnessStatus"><option value="UNKNOWN">غير محدد</option><option value="FIT">لائق</option><option value="REVIEW">تحتاج مراجعة</option><option value="UNFIT">غير لائق</option></select></label><label>انتهاء الفحص الطبي<input name="medicalClearanceExpiresAt" type="date"></label></div><p class="hl-profile-editor-status" role="status" aria-live="polite"></p><button type="button" data-diver-retry hidden>إعادة المحاولة</button><footer><button type="button" data-diver-cancel>إلغاء</button><button type="submit" class="primary-button">حفظ بيانات الغواص</button></footer></form>`);
+    uiLocale.setHTML(dialog, uiLocale.html`<form><header><div><small>DIVER PROFILE · ملف الغواص</small><h2>بيانات الغواص والطوارئ</h2></div><button type="button" data-diver-close aria-label="إغلاق">×</button></header><div class="hl-profile-editor-grid"><label>الجوال الأساسي<input name="primaryPhone" type="tel" maxlength="30"></label><label>الجنسية<input name="nationality" maxlength="80"></label><label>اسم جهة اتصال الطوارئ<input name="emergencyName" maxlength="120"></label><label>جوال الطوارئ<input name="emergencyPhone" type="tel" maxlength="30"></label><label>صلة القرابة<input name="emergencyRelation" maxlength="80"></label><label>فصيلة الدم<input name="bloodType" maxlength="10"></label><label>الحالة الصحية المصرّح بها ذاتيًا<select name="medicalFitnessStatus" aria-describedby="hl-diver-self-declaration"><option value="UNKNOWN">غير محدد</option><option value="FIT">أصرّح بأنني لائق</option><option value="REVIEW">أطلب مراجعة حالتي</option><option value="UNFIT">أصرّح بأنني غير لائق</option></select></label><label>تاريخ الانتهاء المُدخل ذاتيًا<input name="medicalClearanceExpiresAt" type="date" aria-describedby="hl-diver-self-declaration"></label></div><p id="hl-diver-self-declaration">هذه بيانات تُدخلها بنفسك. حفظ الحالة أو التاريخ لا يمنح تصريحًا طبيًا أو أهلية للمشاركة؛ تُراجع المتطلبات والأدلة بحسب الخدمة ومصدرها.</p><p class="hl-profile-editor-status" role="status" aria-live="polite"></p><button type="button" data-diver-retry hidden>إعادة المحاولة</button><footer><button type="button" data-diver-cancel>إلغاء</button><button type="submit" class="primary-button">حفظ بيانات الغواص</button></footer></form>`);
     const form=dialog.querySelector('form'),close=()=>dialog.close();
     dialog.querySelector('[data-diver-close]').addEventListener('click',close);
     dialog.querySelector('[data-diver-cancel]').addEventListener('click',close);
@@ -355,6 +356,7 @@
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-equipment"]');if(!btn)return;event.preventDefault();openEquipmentEditor()});
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-profile"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجل الدخول أولًا'));return}openDiverEditor()});
   document.addEventListener('click',async event=>{const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجل الدخول أولًا لفتح بيانات الحساب'));return}let current=window.HydrolandProfileData?.profile;if(!current){toast(uiLocale.message('جارٍ تحميل بيانات الحساب...'));await load();current=window.HydrolandProfileData?.profile;if(!current)return}openProfileEditor(current)});
+  document.addEventListener('hydroland:session-cleared',()=>{diverEditorVersion++;document.getElementById('hl-diver-editor')?.remove();});
   document.addEventListener('hydroland:session-cleared',()=>{const editor=document.getElementById('hl-profile-editor');if(editor){editor.querySelector('form')?.reset();editor.querySelectorAll('select').forEach(select=>select.replaceChildren());editor.querySelector('.hl-profile-editor-status').textContent='';editor.querySelector('[data-profile-export]').disabled=false;if(editor.open)editor.close()}loadVersion++;latestLoad=null;loadPromises.clear();window.HydrolandProfileData=undefined;renderProfile({},[])});
   document.addEventListener('hydroland:session-refreshed',()=>void load());
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.())window.HydrolandProfileData=undefined;load()});setTimeout(load,500);window.HydrolandProfile={load,saveProfile,edit:()=>{if(auth()?.isAuthenticated?.()&&window.HydrolandProfileData?.profile)openProfileEditor(window.HydrolandProfileData.profile)}};

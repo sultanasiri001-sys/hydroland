@@ -10,6 +10,7 @@ import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
 import { satisfiesTripBookingPayment, tripBookingPaymentRequirement } from '../commerce/trip-booking-contract';
+import { applyParticipationPolicy, evaluateParticipation } from '../participation/participation-evaluator';
 
 type Mode = 'center' | 'marine' | 'admin' | 'owner' | 'organization';
 type Action = 'CONFIRM' | 'CANCEL';
@@ -123,6 +124,8 @@ export class BookingManagementService {
     const require = (valid: boolean, key: keyof typeof rules, code: string) => { if (!valid) { if (rules[key].enforce) blockers.push(code); else if (rules[key].review) issues.push(code); } };
     require(participants.length === booking.seats, 'participant', 'PARTICIPANT_COUNT_MISMATCH');
     require(participants.every(p => p.eligibilityStatus === 'ELIGIBLE'), 'participant', 'PARTICIPANT_ELIGIBILITY_PENDING');
+    const participation = applyParticipationPolicy(await Promise.all(participants.map(async participant => (await evaluateParticipation(tx, 'BOOKING_PARTICIPANT', participant.id)).readiness)), rules.participant);
+    blockers.push(...participation.blockers); issues.push(...participation.issues);
     // Optional approval does not override an explicit trip deferral, matching booking creation.
     if (safety?.decision === 'DEFERRED') blockers.push('SAFETY_APPROVAL');
     else require(safety?.decision === 'ALLOWED', 'safety', 'SAFETY_APPROVAL');
@@ -136,7 +139,7 @@ export class BookingManagementService {
     const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number; refundedAmountMinor: number; netCollectedAmountMinor: number }> = {};
     for (const p of payments) { const key = p.currency + ':' + p.status; financial[key] ??= { currency: p.currency, status: p.status, count: 0, amountMinor: 0, refundedAmountMinor: 0, netCollectedAmountMinor: 0 }; financial[key].count++; financial[key].amountMinor += p.amountMinor; financial[key].refundedAmountMinor += p.refundedAmountMinor ?? 0; if (p.status === 'CAPTURED' || p.status === 'REFUNDED') financial[key].netCollectedAmountMinor += Math.max(0, p.amountMinor - (p.refundedAmountMinor ?? 0)); }
     const policyReview = { required: issues.length > 0, issues, states: Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v.state])), weatherGate: { ...settings, decision: evaluation.decision, reviewStatus: review?.status ?? null, forecastAt: review?.forecastAt ?? null } };
-    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, booking.contractSnapshot, trip, participants, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), paymentContractReview, confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
+    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, booking.contractSnapshot, trip, participants, participation.assessments, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, participation: participation.assessments, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), paymentContractReview, confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
   }
 
   async detail(accountId: string, id: string, mode: Mode = 'center', tripId?: string, organizationId?: string) {

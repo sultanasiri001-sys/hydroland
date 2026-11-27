@@ -7,6 +7,7 @@ import { DocumentAuthorizationService } from './document-authorization.service';
 import { decisionDigest, scopeId } from './owner-administrative-decision.domain';
 import { templateObject } from './document-template-input';
 import { validateDocumentPayload } from './document-payload';
+import { assertNotParticipationSource, PARTICIPATION_SOURCE_PREFIX } from '../participation/participation-privacy';
 import { assignedReviewAccess, boundedNote, eligibleReviewParticipant, grantInput, INTERNAL_REVIEW_NOTICE, INTERNAL_REVIEW_POLICY, INTERNAL_REVIEW_PREFIX, readGrant, ReviewGrant, reviewKey, reviewPlatform, reviewSource, sealGrant, validExpiry } from './internal-document-review.domain';
 
 type Tx = Prisma.TransactionClient;
@@ -107,7 +108,10 @@ export class InternalDocumentReviewService {
     scopeId(org);scopeId(id);const x=templateObject(body,['expectedRevision','reason','confirmed']),reason=boundedNote(x.reason);scopeId(x.expectedRevision);
     if(x.confirmed!==true)throw new BadRequestException('أكّد إلغاء التكليف المعروض.');
     return this.catchConflict(()=>this.db.serializable(async tx=>{
-      const platform=await this.owner(tx,actorId,org), initial=await this.stored(tx,org,id);
+      const platform=await this.owner(tx,actorId,org);
+      const source=await tx.managedDocument.findFirst({where:{id,organizationId:org},select:{template:{select:{code:true}}}});
+      if(source)assertNotParticipationSource(source.template.code);
+      const initial=await this.stored(tx,org,id);
       if(!initial)throw new NotFoundException('لا يوجد تكليف محفوظ.');
       await this.lock(tx,org,id,[actorId,platform.ownerId,initial.signer.accountId,...(initial.reviewer?[initial.reviewer.accountId]:[])]);
       await this.owner(tx,actorId,org);const current=await this.stored(tx,org,id);
@@ -122,7 +126,15 @@ export class InternalDocumentReviewService {
     return this.db.serializable(async tx=>{
       const platform=await reviewPlatform(tx), prefix=INTERNAL_REVIEW_PREFIX+platform.id+':';
       if(cursor&&!cursor.startsWith(prefix))throw new BadRequestException('مؤشر القائمة خارج الجهة.');
-      const rows=await tx.operationalSetting.findMany({where:{key:{startsWith:prefix,...(cursor?{gt:cursor}:{})},OR:[{value:{path:['reviewer','accountId'],equals:actorId}},{value:{path:['signer','accountId'],equals:actorId}}]},orderBy:{key:'asc'},take:21});
+      // Exclude private sources before pagination so a stored grant cannot expose
+      // their document ID through the next-page cursor.
+      const rows=await tx.$queryRaw<Array<{key:string}>>`
+        SELECT s."key" FROM "OperationalSetting" s
+        WHERE s."key" LIKE ${prefix+'%'} AND (${cursor??null}::text IS NULL OR s."key">${cursor??null})
+          AND (s."value"->'reviewer'->>'accountId'=${actorId} OR s."value"->'signer'->>'accountId'=${actorId})
+          AND NOT EXISTS (SELECT 1 FROM "ManagedDocument" d JOIN "DocumentTemplate" t ON t."id"::text=d."templateId"::text
+            WHERE d."id"::text=substring(s."key" FROM char_length(${prefix})+1) AND t."code" LIKE ${PARTICIPATION_SOURCE_PREFIX+'%'})
+        ORDER BY s."key" ASC LIMIT 21`;
       const items=[];
       for(const row of rows.slice(0,20)){
         const id=row.key.slice(prefix.length);try{

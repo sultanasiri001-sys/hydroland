@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const { PrismaClient } = require('@prisma/client');
 const { assertTrainingStandardCompletion, assertTrainingDivePlan, createTrainingStandardDraft, decideTrainingStandard } = require('../dist/governance/training-standard-store.js');
 const { trainingStandardBinding, trainingStandardHash, parseTrainingStandard } = require('../dist/governance/training-standard-profile.js');
+const { evaluateParticipation, participationTrainingGate } = require('../dist/participation/participation-evaluator.js');
 const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
 const { TrainingSessionService } = require('../dist/governance/training-session.service.js');
 const { TrainingAuthorizationService } = require('../dist/governance/training-authorization.service.js');
@@ -47,7 +48,12 @@ function profile(cap = 2, timeZone = 'Asia/Riyadh') {
   };
 }
 
-async function fixture(tx, ids, cap = 2, gas = false, timeZone = 'Asia/Riyadh') {
+async function fixture(tx, ids, cap = 2, gas = false, timeZone = 'Asia/Riyadh', { legacyHistoricalParticipation = false } = {}) {
+  assert.equal(legacyHistoricalParticipation, true, 'This 2020 agency-evidence fixture requires explicit legacy review, not fabricated historical D01 consent');
+  const participationKey = { category: 'TRAINING', ruleKey: 'PARTICIPANT_ELIGIBILITY' };
+  ids.participationPolicyBefore = await tx.policyControl.findUnique({ where: { category_ruleKey: participationKey } });
+  await tx.policyControl.upsert({ where: { category_ruleKey: participationKey },
+    create: { ...participationKey, labelAr: 'Synthetic historical agency evidence review', state: 'REVIEW' }, update: { state: 'REVIEW' } });
   const accounts = [];
   for (const role of ['ADMIN', 'REVIEWER', 'INSTRUCTOR', 'DIVER']) {
     const account = await tx.account.create({ data: { id: randomUUID(), email: `a14-${randomUUID()}@example.invalid`, passwordHash: 'SYNTHETIC_NOT_A_LOGIN', status: 'ACTIVE',
@@ -79,6 +85,11 @@ async function fixture(tx, ids, cap = 2, gas = false, timeZone = 'Asia/Riyadh') 
     record: { create: { status: 'IN_PROGRESS', stages: { create: { stageType: 'SYNTHETIC', deliveryMode: 'BLENDED', sequence: 1,
       skills: { create: { skillCode: 'SYNTHETIC_SKILL', name: 'Synthetic only', status: 'COMPETENT', signedOffByInstructorId: instructor.id, signedOffAt: new Date(beforeDive) } } } } } } }, include: { record: true } });
   ids.enrollment = enrollment.id;
+  assert.equal(await tx.participationCase.findUnique({ where: { trainingEnrollmentId: enrollment.id } }), null);
+  assert.equal((await evaluateParticipation(tx, 'TRAINING_ENROLLMENT', enrollment.id)).readiness.status, 'ACTION_REQUIRED');
+  const participation = await participationTrainingGate(tx, enrollment.id);
+  assert.equal(participation.cleared, false, 'Legacy historical review is never participation clearance');
+  assert.ok(participation.issues.includes('PARTICIPATION_SOURCE_REVIEW_REQUIRED'));
   const sessions = [], dives = [];
   for (let i = 0; i < 2; i++) {
     const startedAt = `2020-01-02T${i ? '08' : '06'}:00:00.000Z`, endedAt = `2020-01-02T${i ? '08' : '06'}:30:00.000Z`;
@@ -300,7 +311,7 @@ try {
     const ids = { accounts: [], persons: [] };
     try {
       await db.$transaction(async tx => {
-        const f = await fixture(tx, ids, entry.cap, entry.gas, entry.timeZone);
+        const f = await fixture(tx, ids, entry.cap, entry.gas, entry.timeZone, { legacyHistoricalParticipation: true });
         // Every negative begins with a proven-valid fixture, so an unrelated gate
         // cannot make a broken mutation look like regression coverage.
         assert.deepEqual(await assertTrainingStandardCompletion(tx, f.enrollment.id), f.binding);
@@ -316,6 +327,7 @@ try {
       if (error !== rollback) throw new Error(`A14 PostgreSQL regression failed: ${entry.name}`, { cause: error });
     } finally {
       // No deletes against shared data: transaction rollback is the cleanup.
+      if ('participationPolicyBefore' in ids) assert.deepEqual(await db.policyControl.findUnique({ where: { category_ruleKey: { category: 'TRAINING', ruleKey: 'PARTICIPANT_ELIGIBILITY' } } }), ids.participationPolicyBefore, 'Scoped historical-review policy fully restored by rollback');
       assert.equal(await db.account.count({ where: { id: { in: ids.accounts } } }), 0, 'Fixture account rollback');
       assert.equal(await db.person.count({ where: { id: { in: ids.persons } } }), 0, 'Fixture person rollback');
       if (ids.source) {

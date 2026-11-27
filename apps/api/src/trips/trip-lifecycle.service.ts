@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { OperationalClearanceService } from './operational-clearance.service';
 import { PolicyControlService } from './policy-control.service';
+import { applyParticipationPolicy, evaluateParticipation } from '../participation/participation-evaluator';
 
 type Mode = 'center' | 'admin';
 type Action = 'PUBLISH' | 'REOPEN' | 'CLOSE' | 'CANCEL' | 'COMPLETE';
@@ -36,6 +37,7 @@ export class TripLifecycleService {
   private async snapshot(tx: Prisma.TransactionClient, trip: Trip) {
     const bookings = await tx.booking.findMany({ where: { tripId: trip.id }, orderBy: { id: 'asc' }, select: { id: true, accountId: true, status: true, seats: true, updatedAt: true } });
     const participants = await tx.bookingParticipant.findMany({ where: { booking: { tripId: trip.id, status: 'CONFIRMED' } }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, fullName: true, eligibilityStatus: true, updatedAt: true } });
+    const participation = await Promise.all(participants.map(async participant => (await evaluateParticipation(tx, 'BOOKING_PARTICIPANT', participant.id)).readiness));
     const payments = await tx.payment.findMany({ where: { booking: { tripId: trip.id } }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, status: true, currency: true, amountMinor: true, updatedAt: true } });
     const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number }> = {};
     for (const payment of payments) {
@@ -43,7 +45,7 @@ export class TripLifecycleService {
       financial[key] ??= { currency: payment.currency, status: payment.status, count: 0, amountMinor: 0 };
       financial[key].count++; financial[key].amountMinor += payment.amountMinor;
     }
-    return { bookings, participants, financial: Object.values(financial), stateToken: hash([trip.updatedAt, bookings, participants, payments]) };
+    return { bookings, participants, participation, financial: Object.values(financial), stateToken: hash([trip.updatedAt, bookings, participants, participation, payments]) };
   }
 
   async preview(accountId: string, tripId: string, mode: Mode = 'center') {
@@ -64,6 +66,7 @@ export class TripLifecycleService {
         stateToken: state.stateToken, actions,
         bookings: { pending: state.bookings.filter(b => b.status === 'PENDING').length, confirmed: state.bookings.filter(b => b.status === 'CONFIRMED').length, cancelled: state.bookings.filter(b => b.status === 'CANCELLED').length, confirmedSeats: state.bookings.filter(b => b.status === 'CONFIRMED').reduce((sum, b) => sum + b.seats, 0) },
         participants: state.participants.map(p => ({ id: p.id, fullName: p.fullName, eligibilityStatus: p.eligibilityStatus })),
+        participation: state.participation,
         financial: state.financial, financialActionExecuted: false,
         clearance: await this.clearance.currentStatus(tripId, tx),
         lastAction: latest ? { occurredAt: latest.occurredAt, reason: metadata?.reason, attendedParticipants: metadata?.attendedParticipants, absentParticipants: metadata?.absentParticipants, cancelledBookings: metadata?.cancelledBookings } : null,
@@ -152,6 +155,9 @@ export class TripLifecycleService {
         const attending = state.participants.filter(p => attendedIds.includes(p.id));
         if (attending.length !== attendedIds.length) throw new ConflictException('يمكن تسجيل حضور مشاركين من حجوزات هذه الرحلة المؤكدة فقط.');
         if (attending.some(p => p.eligibilityStatus !== 'ELIGIBLE')) { if (eligibility.enforce) throw new ConflictException('راجع أهلية المشاركين الحاضرين قبل الإنهاء.'); if (eligibility.review) reviewIssues.push('PARTICIPANT_ELIGIBILITY'); }
+        const participation = applyParticipationPolicy(await Promise.all(attending.map(async participant => (await evaluateParticipation(tx, 'BOOKING_PARTICIPANT', participant.id)).readiness)), eligibility);
+        if (!participation.ready) throw new ConflictException({ code: 'PARTICIPATION_NOT_CLEARED', message: 'راجع مصادر موافقة وأهلية المشاركين قبل إكمال الرحلة.', reasons: participation.blockers });
+        reviewIssues.push(...participation.issues);
         // Deliberately no certification/verification: dive logs remain pending their separate review workflow.
         for (const participant of attending) {
           if (await tx.diveLog.findFirst({ where: { sourceTripId: tripId, sourceParticipantId: participant.id } })) throw new ConflictException('يوجد سجل غوص سابق لهذا المشارك؛ يلزم مراجعة السجل قبل الإنهاء.');

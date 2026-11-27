@@ -34,6 +34,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
+      D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -267,6 +268,34 @@ jobs:
         with:
           name: f08-procurement-evidence
           path: artifacts/f08-*
+          if-no-files-found: warn
+      - name: D01 private participation sources, consent and native operational eligibility
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D01_POSTGRES_CONTAINER: ${{ job.services.postgres18.id }}
+          D01_EVIDENCE_FILE: artifacts/d01-http-acceptance.json
+          D01_RECOVERY_EVIDENCE_FILE: artifacts/d01-native-recovery.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/participation_test_d01_acceptance
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE participation_test_d01_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/scripts/d01-participation-migration-checks.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127010000_participation_source_eligibility/migration.sql
+          node apps/api/scripts/d01-participation-http-checks.cjs
+          node apps/api/scripts/d01-participation-native-recovery.mjs
+      - name: Retain D01 synthetic participation and native recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d01-participation-evidence
+          path: artifacts/d01-*
           if-no-files-found: warn
       - name: Course original-contract checkout and collection through real HTTP routes
         env:
@@ -653,7 +682,11 @@ jobs:
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs
-          NOTIFICATIONS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/notifications-http-e2e.mjs
+          if ! NOTIFICATIONS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/notifications-http-e2e.mjs; then
+            echo "Notifications HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
           STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-checkout-http-e2e.mjs
           STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-offerings-http-e2e.mjs
           CONTROLS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/operational-controls-http-e2e.mjs

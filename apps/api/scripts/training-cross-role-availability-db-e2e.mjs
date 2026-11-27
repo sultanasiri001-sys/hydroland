@@ -62,7 +62,7 @@ try{
  check(!(afterA.startsAt.getTime()===interval(22).startsAt.getTime()&&afterB.instructorAccountId===shared.id),'reschedule/reassignment cannot commit overlapping roles for one account');
 
  const [startInstructor,startStudent,nextStudent]=await Promise.all([account(),account(),account()]),liveCourse=await course(startInstructor.id,startStudent.id),nextCourse=await course(startStudent.id,nextStudent.id);
- const liveTimes={startsAt:new Date(Date.now()-300000),endsAt:new Date(Date.now()+3600000)};
+ const liveTimes={startsAt:new Date((await standards.consentAt(liveCourse.id)).getTime()+1),endsAt:new Date(Date.now()+3600000)};
  const live=await db.trainingSession.create({data:{trainingRecordId:liveCourse.record.id,instructorAccountId:startInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
  await race([()=>sessions.act(owner.id,live.id,{action:'START',reason:'Concurrent start fixture',expectedUpdatedAt:live.updatedAt.toISOString()}),()=>schedule(nextCourse,0,{startsAt:new Date(Date.now()+600000).toISOString(),endsAt:new Date(Date.now()+1800000).toISOString()})],'concurrent START/cross-role create');
  check((await session(live.id)).status==='IN_PROGRESS'&&await db.trainingSession.count({where:{trainingRecordId:nextCourse.record.id}})===0,'START preserves its session and overlapping cross-role create is rejected');
@@ -73,8 +73,9 @@ try{
  await conflict(()=>schedule(openTarget,52),'legacy null-end session remains open-ended across participant roles');
 
  const [legacyInstructor,legacyStudent,legacyOther]=await Promise.all([account(),account(),account()]),legacyCourse=await course(legacyInstructor.id,legacyStudent.id),legacyConflict=await course(legacyStudent.id,legacyOther.id);
- const legacy=await db.trainingSession.create({data:{trainingRecordId:legacyCourse.record.id,instructorAccountId:legacyInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
- await db.trainingSession.create({data:{trainingRecordId:legacyConflict.record.id,instructorAccountId:legacyStudent.id,status:'SCHEDULED',...liveTimes}});
+ const legacyTimes={startsAt:new Date(Math.max((await standards.consentAt(legacyCourse.id)).getTime(),(await standards.consentAt(legacyConflict.id)).getTime())+1),endsAt:new Date(Date.now()+3600000)};
+ const legacy=await db.trainingSession.create({data:{trainingRecordId:legacyCourse.record.id,instructorAccountId:legacyInstructor.id,status:'CHECK_IN_OPEN',...legacyTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
+ await db.trainingSession.create({data:{trainingRecordId:legacyConflict.record.id,instructorAccountId:legacyStudent.id,status:'SCHEDULED',...legacyTimes}});
  await conflict(()=>sessions.act(owner.id,legacy.id,{action:'START',reason:'Legacy cross-role fixture',expectedUpdatedAt:legacy.updatedAt.toISOString()}),'START rechecks legacy overlapping participant roles');
  check((await session(legacy.id)).status==='CHECK_IN_OPEN','rejected START does not advance status');
 

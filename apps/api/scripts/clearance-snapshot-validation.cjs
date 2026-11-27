@@ -40,6 +40,7 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
     },
     marineAsset: { findUnique: async () => { hit('marine-proof'); return { id: 'asset', status: 'ACTIVE', calendarResourceId: 'BOAT', maintenance: [], documents: REQUIRED_MARINE_DOCUMENTS.map(documentType => ({ documentType, status: 'VERIFIED', expiresAt: end })) }; } },
     marineReadinessSnapshot: { create: async input => { hit('marine-snapshot'); snapshots.push(input); return input; } },
+    bookingParticipant: { findMany: async () => { hit('participants'); return []; } },
     auditEvent: { findFirst: async () => ({ id: 'prior', action: 'OPERATIONAL_CLEARANCE_GRANTED', occurredAt: end }) },
   };
   const root = new Proxy({ serializable: async work => { const n = snapshots.length, g = grants.length; try { hit('transaction'); return await work(tx); } catch (e) { snapshots.length = n; grants.length = g; throw e; } } }, { get(target, key) { if (key in target) return target[key]; rootReads++; throw Error('Root client escaped transaction: ' + String(key)); } });
@@ -48,6 +49,37 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
   const calendar = new CalendarAllocationService(root, audit, gate, policies, new BoatComplianceService(root, policies, audit), new EquipmentInspectionService(root, audit, policies), new TripComplianceService(root, policies, audit), new MarineOperationsService(root, {}, audit), new TripWeatherReviewService(root, {}, audit));
   const clearance = new OperationalClearanceService(root, audit, calendar);
   return { tx, calendar, clearance, reads, snapshots, grants, failure, rootReads: () => rootReads };
+}
+function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = start, action = 'OPERATIONAL_CLEARANCE_GRANTED', auditFailure = false } = {}) {
+  const events = action ? [{ id: 'prior', action, occurredAt: end }] : [], audits = [];
+  const failure = new Error('Injected revocation audit failure');
+  const tx = {
+    auditEvent: { findFirst: async () => events.at(-1) ?? null },
+    bookingParticipant: { findMany: async () => invalidSource ? [{ id: 'participant' }] : [] },
+    // The production evaluator must reject corrupt adopted evidence even when
+    // the generic eligibility preference is REVIEW or DISABLED.
+    participationCase: { findUnique: async () => ({ id: 'case', revision: 1, digest: 'invalid', state: { schemaVersion: 0 } }) },
+    $queryRaw: async strings => {
+      const sql = strings.join('');
+      if (sql.includes('GREATEST')) return [{ changedAt }];
+      if (sql.includes('PolicyControl')) return [{ state }];
+      throw Error('Unexpected status query: ' + sql);
+    },
+  };
+  const db = new Proxy({ serializable: async work => {
+    const before = events.slice(), count = audits.length;
+    try { return await work(tx); }
+    catch (error) { events.splice(0, events.length, ...before); audits.length = count; throw error; }
+  } }, { get(target, key) { if (key in target) return target[key]; throw Error('Status escaped its transaction: ' + String(key)); } });
+  const audit = { record: async (input, client) => {
+    assert.equal(client, tx);
+    const event = { id: 'revocation-' + (audits.length + 1), action: input.action, occurredAt: new Date(end.getTime() + 1) };
+    events.push(event); audits.push(input);
+    if (auditFailure) throw failure;
+    return event;
+  } };
+  const calendar = new Proxy({}, { get() { throw Error('A status read must not execute readiness providers or persist snapshots'); } });
+  return { tx, events, audits, failure, clearance: new OperationalClearanceService(db, audit, calendar) };
 }
 (async () => {
   for (const state of ['ENABLED', 'REVIEW', 'DISABLED']) {
@@ -78,5 +110,34 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
   assert.equal((await legacy.clearance.grant('reviewer', 'trip')).clearance, 'GRANTED');
   assert(legacy.reads.includes('maintenance-schema')); assert(!legacy.reads.includes('maintenance-proof')); assert.equal(legacy.rootReads(), 0); checks++;
   const ended = fixture({ terminal: true }); await assert.rejects(() => ended.clearance.grant('reviewer', 'trip'), e => e.getStatus() === 409); assert(!ended.reads.includes('boat-proof')); checks++;
+  const current = statusFixture();
+  assert.equal((await current.clearance.status('trip')).status, 'ACTIVE');
+  assert.equal((await current.clearance.revokeIfStale('trip')).reason, 'CURRENT');
+  assert.equal(current.audits.length, 0); checks++;
+  for (const state of ['ENABLED', 'REVIEW', 'DISABLED']) {
+    const stale = statusFixture({ state, invalidSource: true });
+    assert.equal((await stale.clearance.currentStatus('trip', stale.tx)).status, 'STALE');
+    assert.equal((await stale.clearance.status('trip')).status, 'STALE');
+    assert.equal(stale.audits.length, 0, 'Displaying stale source evidence must not write a revocation');
+    const revoked = await stale.clearance.revokeIfStale('trip');
+    assert.equal(revoked.revoked, true); assert.equal(revoked.previousClearanceEventId, 'prior');
+    assert.equal(stale.audits.length, 1);
+    assert.equal((await stale.clearance.status('trip')).status, 'REVOKED');
+    assert.equal((await stale.clearance.revokeIfStale('trip')).reason, 'NO_ACTIVE_CLEARANCE');
+    assert.equal(stale.audits.length, 1, 'Repeated scans must preserve the one revocation'); checks++;
+  }
+  const failedScan = statusFixture({ invalidSource: true, auditFailure: true });
+  await assert.rejects(() => failedScan.clearance.revokeIfStale('trip'), error => error === failedScan.failure);
+  assert.equal(failedScan.events.length, 1); assert.equal(failedScan.audits.length, 0);
+  assert.equal((await failedScan.clearance.status('trip')).status, 'STALE'); checks++;
+  const revised = statusFixture({ changedAt: new Date(end.getTime() + 1) });
+  assert.equal((await revised.clearance.status('trip')).status, 'STALE'); assert.equal(revised.audits.length, 0);
+  assert.equal((await revised.clearance.revokeIfStale('trip')).revoked, true); checks++;
+  for (const action of [null, 'OPERATIONAL_CLEARANCE_REVOKED']) {
+    const inactive = statusFixture({ action });
+    assert.equal((await inactive.clearance.status('trip')).status, action ? 'REVOKED' : 'MISSING');
+    assert.equal((await inactive.clearance.revokeIfStale('trip')).reason, 'NO_ACTIVE_CLEARANCE');
+    assert.equal(inactive.audits.length, 0); checks++;
+  }
   console.log(`Clearance snapshot routing: ${checks} groups PASS; actual compiled readers, zero root/provider calls; transaction failures preserved. Database isolation is covered separately.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

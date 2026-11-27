@@ -1,13 +1,16 @@
 import {randomUUID} from 'node:crypto';
+import {setTimeout as wait} from 'node:timers/promises';
 import { checkDiveLogReview } from './dive-log-review-http-checks.mjs';
+import {participationFixture} from './participation-isolated-fixture.mjs';
 export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
+ const participation=participationFixture(db,base);
  const trips=[],resources=[],events=[],bookings=[];
  const call=async(token,path,method='GET',body)=>{const response=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
  const path=id=>'/center/me/trips/'+id;
  const preview=async id=>{const r=await call(ta,path(id)+'/lifecycle');check(r.status===200,'Lifecycle preview: '+JSON.stringify(r));return r.body};
  const command=(p,action,extra={})=>({action,requestId:randomUUID(),reason:'توثيق إجراء رحلة في اختبار معزول',expectedUpdatedAt:p.trip.updatedAt,expectedState:p.stateToken,...(['CANCEL','COMPLETE'].includes(action)?{financialAcknowledged:true}:{}),...extra});
  const apply=(id,body,token=ta)=>call(token,path(id)+'/actions','POST',body);
- const make=async(status='OPEN',past=false)=>{const trip=await db.trip.create({data:{title:'Lifecycle CI '+randomUUID(),organizationId:a.org.id,type:'SHORE',status,capacity:5,startsAt:new Date(Date.now()+(past?-7200000:86400000)),endsAt:new Date(Date.now()+(past?-3600000:90000000))}});trips.push(trip.id);await db.operationalSetting.create({data:{key:'trip-price:'+trip.id,value:{pricePerSeatMinor:12500,currency:'SAR'}}});return trip};
+ const make=async(status='OPEN',soon=false)=>{const now=Date.now(),trip=await db.trip.create({data:{title:'Lifecycle CI '+randomUUID(),organizationId:a.org.id,type:'SHORE',status,capacity:5,startsAt:new Date(now+(soon?45000:86400000)),endsAt:new Date(now+(soon?46000:90000000))}});trips.push(trip.id);await db.operationalSetting.create({data:{key:'trip-price:'+trip.id,value:{pricePerSeatMinor:12500,currency:'SAR'}}});return trip};
  const book=async(trip,accountId,status,seats=1)=>{const row=await db.booking.create({data:{tripId:trip.id,accountId,status,seats}});bookings.push(row.id);return row};
  const allocate=async trip=>{const resource=await db.calendarResource.create({data:{type:'SITE',name:'Lifecycle CI site'}});resources.push(resource.id);const event=await db.calendarEvent.create({data:{organizationId:a.org.id,type:'TRIP',referenceType:'TRIP',referenceId:trip.id,title:trip.title,startsAt:trip.startsAt,endsAt:trip.endsAt}});events.push(event.id);await db.calendarAllocation.create({data:{eventId:event.id,resourceId:resource.id,startsAt:trip.startsAt,endsAt:trip.endsAt}});return resource};
  try{
@@ -44,7 +47,17 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   check((await call(ta,'/trips/crew/assignments/'+crew.id+'/respond','PATCH',{response:'ACCEPTED'})).status===409,'Cancelled crew cannot accept an assignment');
 
   const trip=await make('OPEN',true),site=await allocate(trip),cb=await book(trip,ownerA.id,'CONFIRMED',2),pb=await book(trip,admin.id,'PENDING');
-  const attendee=await db.bookingParticipant.create({data:{bookingId:cb.id,accountId:ownerA.id,fullName:'حضر الغوص',eligibilityStatus:'ELIGIBLE'}}),absent=await db.bookingParticipant.create({data:{bookingId:cb.id,fullName:'لم يحضر',eligibilityStatus:'ELIGIBLE'}});
+  const attendee=await db.bookingParticipant.create({data:{bookingId:cb.id,accountId:ownerA.id,fullName:'حضر الغوص',eligibilityStatus:'PENDING'}}),absent=await db.bookingParticipant.create({data:{bookingId:cb.id,fullName:'لم يحضر',eligibilityStatus:'PENDING'}});
+  for(const participant of [attendee,absent]){
+   const evidence=await participation.prepare('BOOKING_PARTICIPANT',participant.id,{review:true});
+   check(evidence.case.status==='CLEARED'&&Date.parse(evidence.consentedAt)<trip.startsAt.getTime()&&Date.parse(evidence.case.review.reviewedAt)<trip.startsAt.getTime(),'Actual fixture consent and independent review precede the activity');
+  }
+  // COMPLETE checks the end time before readiness. Wait for the unchanged real
+  // schedule so subsequent 409 assertions exercise clearance/attendance rather
+  // than accidentally passing at the earlier time gate.
+  const remaining=Math.max(0,trip.endsAt.getTime()+25-Date.now());
+  check(remaining<60000,'Short lifecycle fixture wait remains bounded');if(remaining)await wait(remaining);
+  check(Date.now()>=trip.endsAt.getTime(),'The fixture activity reaches its scheduled end without rewriting timestamps');
   const completeData={attendedParticipantIds:[attendee.id],siteName:'موقع عالم الغوص',regionCode:'ASIR',maxDepthM:12,durationMin:35};
   p=await preview(trip.id);c=command(p,'COMPLETE',completeData);
   check((await apply(trip.id,c)).status===409,'Missing operational clearance blocks completion');
@@ -52,12 +65,19 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',decidedAt:new Date(),items:{weather:{decision:'ALLOWED',waveHeightM:0.2,windSpeedKph:4,observedAt:new Date().toISOString()}}}});
   await db.crewAssignment.create({data:{tripId:trip.id,resourceId:site.id,accountId:admin.id,roleType:'CREW',status:'ACCEPTED'}});
   await db.$executeRaw`INSERT INTO "TripComplianceReview"("id","tripId","regulatoryStatus","permitStatus","createdAt","updatedAt") VALUES(${randomUUID()},${trip.id},'APPROVED','APPROVED',NOW(),NOW())`;
-  const grant=async()=>{const r=await call(adminToken,'/trips/admin/'+trip.id+'/operational-clearance','POST',{reason:'Isolated CI operational readiness review'});check(r.status===201,'Canonical clearance must pass actual readiness: '+JSON.stringify(r));return r.body};
+  const requestGrant=()=>call(adminToken,'/trips/admin/'+trip.id+'/operational-clearance','POST',{reason:'Isolated CI operational readiness review'});
+  const grant=async()=>{const r=await requestGrant();check(r.status===201,'Canonical clearance must pass actual readiness: '+JSON.stringify(r));return r.body};
   await grant();p=await preview(trip.id);check(p.clearance.status==='ACTIVE','Event-based clearance watermark works on canonical schema');
   for(const extra of [{attendedParticipantIds:[]},{attendedParticipantIds:[attendee.id,attendee.id]},{maxDepthM:151},{durationMin:0},{siteName:[]}])check((await apply(trip.id,command(p,'COMPLETE',{...completeData,...extra}))).status===400,'Invalid completion data rejected');
   check((await apply(trip.id,command(p,'COMPLETE',{...completeData,attendedParticipantIds:[participant.id]}))).status===409,'Foreign participant excluded from attendance');
-  await db.bookingParticipant.update({where:{id:attendee.id},data:{eligibilityStatus:'REJECTED'}});p=await preview(trip.id);check(p.clearance.status==='STALE','Participant change invalidates clearance');await grant();
+  await db.bookingParticipant.update({where:{id:attendee.id},data:{eligibilityStatus:'REJECTED'}});p=await preview(trip.id);check(p.clearance.status==='STALE','Participant change invalidates clearance');
+  const grantEvents={resource:'Trip',resourceId:trip.id,action:{in:['OPERATIONAL_CLEARANCE_GRANTED','OPERATIONAL_REVIEW_APPROVED']}},priorGrants=await db.auditEvent.count({where:grantEvents});
+  const refusedGrant=await requestGrant();check(refusedGrant.status===409,'An ineligible adopted participant prevents a fresh operational grant: '+JSON.stringify(refusedGrant));
+  check(await db.auditEvent.count({where:grantEvents})===priorGrants,'Rejected readiness creates no replacement operational grant');
   p=await preview(trip.id);check((await apply(trip.id,command(p,'COMPLETE',completeData))).status===409,'Ineligible attendee cannot produce dive log');
+  check(await db.diveLog.count({where:{sourceTripId:trip.id}})===0,'Rejected participant produces no dive record before fault restoration');
+  // Restore only the injected native label; the genuine fixture consent and
+  // independent D01 decision remain intact. Never backdate their evidence.
   await db.bookingParticipant.update({where:{id:attendee.id},data:{eligibilityStatus:'ELIGIBLE'}});await grant();
   p=await preview(trip.id);c=command(p,'COMPLETE',completeData);
   let result=await apply(trip.id,c);check(result.status===201&&result.body.createdDiveLogs===1&&result.body.absentParticipants===1,'Completion saves only explicit attendance: '+JSON.stringify(result));
@@ -75,6 +95,7 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   p=await preview(closed.id);check((await apply(closed.id,command(p,'CLOSE'))).status===409,'Closing bookings preserves operational clearance gate');
  }finally{
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});await db.organizationMember.update({where:{id:a.member.id},data:{status:'ACTIVE'}});
+  await participation.cleanup();
   await db.diveLog.deleteMany({where:{sourceTripId:{in:trips}}});await db.invoice.deleteMany({where:{payment:{bookingId:{in:bookings}}}});await db.payment.deleteMany({where:{bookingId:{in:bookings}}});await db.bookingParticipant.deleteMany({where:{bookingId:{in:bookings}}});await db.booking.deleteMany({where:{id:{in:bookings}}});await db.crewAssignment.deleteMany({where:{tripId:{in:trips}}});await db.safetyChecklist.deleteMany({where:{tripId:{in:trips}}});await db.calendarAllocation.deleteMany({where:{eventId:{in:events}}});await db.calendarEvent.deleteMany({where:{id:{in:events}}});await db.calendarResource.deleteMany({where:{id:{in:resources}}});
   for(const id of trips)await db.$executeRaw`DELETE FROM "TripComplianceReview" WHERE "tripId"=${id}`;
   await db.operationalSetting.deleteMany({where:{key:{in:trips.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:trips}}});

@@ -57,9 +57,9 @@ Fresh test databases use the canonical schema plus the specifically required raw
 
 This is a source/check, schema, migration, route and ownership reconciliation for the named delivered scope. It does not assert that all 472 changed paths received a fresh independent behavioral review, close Q04, or establish employee, issuer, legal, banking, provider, physical-maintenance or department acceptance.
 
-## Purple extension
+## Purple and concurrent delivery extension
 
-The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50** in the combined register. Additional Purple work remains outside the delivered denominator until its exact accepted merge is recorded.
+The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50 and the concurrent PR721 is delivery 51** in the combined register. Their receipts are recorded separately below. PR722 remains outside the delivered denominator until its exact accepted merge is recorded.
 
 | Delivery | Exact PR head | Accepted merge | Observed PR workflows |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@ The saved PR metadata was captured before merge and still says open. The separat
 
 PR666's cancelled historical Web run remains unchanged. Final combined-source Web evidence is a separate receipt; a successful C12 PR run does not prove later Purple changes passed.
 
-## Current Purple source and contract review
+## Purple source and contract review before the concurrent D01 delivery
 
 The integrated code was independently reviewed at `7fce7f586b4c9ad171a4af5d40bd7b97c859192c`, with the final test/CI integration at `57302f606dc5b993c8f83678f2f5619dd415f1c8`. Application source and production migration bytes are unchanged between these two points. This named source review is separate from the accepted-delivery list: the combined Purple PR/main/deployment receipts have not yet been recorded in this version.
 
@@ -99,6 +99,63 @@ C08's real combined runtime run exercised all 14 department inputs and director-
 The C08 projection test directly seeds synthetic native rows to verify the read projection; it is distinct from B06/C05's real native command suites. The first combined bootstrap attempt failed because the test helper split a semicolon inside a SQL comment. The failed receipt was retained, the helper was narrowly corrected without changing executable migration SQL, and the complete combined run then passed. The older clearance transaction fixture was also updated for the new maintenance read and passed 27 groups, including policy bypass resistance, stale-clearance denial and transactional failures; that mocked fixture does not prove database isolation.
 
 The [C05 acceptance record](c05-maintenance-2026-11-27.md), [B06 acceptance record](../B06_LEGAL_CONTRACT_LIFECYCLE_ACCEPTANCE_2026-11-27.md) and [committed B06 source-hash summary](../evidence/B06_2026-11-27/acceptance-summary.json) preserve their detailed boundaries. The machine-readable I01 register retains the local result summaries and log digests. Full current-source remote Web/API/release-policy results, production migration/deployment and the subsequent accepted merge must be appended as separate receipts. None of these local results changes PR666's historical cancellation or creates real operational approval.
+
+
+## Concurrent D01 delivery and updated combined-source review
+
+**PR721 is delivery 51.** It merged while the Purple candidate was awaiting final checks. [PR721](https://github.com/sultanasiri001-sys/hydroland/pull/721) has exact head `8f53716e46fa3c8b73da2051283561acecb66c84` and accepted merge `631d4437ec1ec4239235053e1a4ca708919ca324`. The merge's first parent is C12 delivery 50, `024a6440d1c04135bde07ed11dc8a08883815ef4`; its second parent is the exact D01 head. Both head and merge have tree `0895fc2f0d00020bf54615f58b7ef56d51c63c87`. GitHub records the merge at 01:01:59 UTC on 27 November. The two-commit DAG and all 76 changed-file before/after blobs match the retrieved GitHub metadata.
+
+All **27 workflows on the final exact D01 PR head succeeded**. The [API run 45917951920](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45917951920), job `140241597988`, ran 28 native D01 HTTP groups, both exact TEXT/UUID migration checks and real PostgreSQL 18.7 dump/restore/replay. Its retained recovery result has identical original/restored fingerprints across 187 tables, unchanged original data and zero production writes. The [Web run 45917951794](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45917951794), full job `140241597467`, reports 955 browser cases passed. This evidence remains synthetic and supplies no actual participant consent, guardian authority, medical clearance or organization acceptance.
+
+The earlier D01 head `814f9756d3ea09b10faba7479f324e8a375908b9` retains 26 successful runs and one failed [form-library diagnostic run 45917187178](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45917187178). Its observed error was `D01 fixtures require NODE_ENV=test`. The final head's corrected canonical environment replay passed; the earlier failed run is retained as a failure.
+
+### D01 postmerge status at this receipt
+
+At **01:15:54 UTC**, the 31 retrieved runs for merge `631d4437` comprise 28 successes, one failure and two still running. The [API run 45920202411](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45920202411), job `140248842330`, failed in **HR HTTP/DB E2E**: the notification fixture's `prisma.account.deleteMany()` at `apps/api/scripts/notifications-http-e2e.mjs:88` hit Prisma `P2003` on `Notification_accountId_fkey`. This is the visible grouped fixture cleanup failure. PostgreSQL also records repeated serialization/read-write conflicts on Notification INSERT/COMMIT from 01:15:28.087 through 01:15:28.368, before the cleanup FK failure at 01:15:28.407. The original request failure is masked by cleanup, so the receipt does not assert that cleanup was the sole defect. [Web 45920202168](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45920202168) and [A02 full policy 45920202295](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45920202295) were still running. The complete postmerge gate and matching deployment are **not asserted successful** by this receipt. The complete run records and failure details remain in the JSON register.
+
+### Combined source after retaining D01 and Purple
+
+The integration owner staged main `631d4437` into Purple head `8c9a606675fc09f3418c043b9f0c096387d1d1a2`. This review checked the resolved staged source at 01:12:53 UTC, before the new integration commit and release checks. The preceding 171-model / 148-migration / 835-route audit above remains an accurate historical result for its named source; the combined source has the following updated counts.
+
+| Current static check | Observed result and limit |
+| --- | --- |
+| Canonical Prisma schema | **173 models**: D01 adds `ParticipationCase` and `ParticipationEvent`. The schema blob is `3b97d51c8e71018a7ad426468d708c1434720967`. This reviewer did not regenerate the shared client. |
+| SQL migration history | **149 files**: all 146 files present at `32e07e1` retain identical bytes, followed by the one D01 migration and the two Purple migrations. Existing migration history was not rewritten. |
+| D01 migration | `20261127010000_participation_source_eligibility` creates the two source-bound tables, adapts only their new FK columns to native TEXT/UUID identities, constrains one subject and bounded state, and protects event rows from UPDATE/DELETE. This review does not claim a D01 statement-level TRUNCATE guard. |
+| Literal routes | **844 signatures across 602 TypeScript files, zero conflicts**, from a fresh `node apps/api/scripts/route-uniqueness.mjs` scan. D01 adds nine participation routes; the prior 13 Purple additions remain. |
+| Directly overlapping paths | API workflow, clearance snapshot fixture, form-library diagnostic replay and web asset loader. The root's two textual conflicts are resolved, with zero unresolved paths at review. |
+| Web loader resolution | Preserves maintenance and legal lifecycle assets and adds the D01 participant-eligibility interface after the existing profile assets. |
+| Diagnostic resolution | Retains canonical workflow/job/step variables, including `NODE_ENV=test` and disposable-fixture confirmation, while preserving the diagnostic's own `DATABASE_URL`. |
+| Source identity | The JSON register retains selected overlap-file blobs and a SHA-256 manifest identity for 1,383 tracked source/script/schema/workflow files. A future published commit/tree must be bound to its own complete gate receipt. |
+
+
+### Local checks on the staged combined source
+
+The integration owner's staged source tree `28d6b3b021820521838e135532a2f8ac84898990` passed API and Web builds, API lint and 35 clearance snapshot checks. The retained C05/C08 summaries and combined browser source manifest were read independently for this register.
+
+| Scoped integration check | Actual result |
+| --- | --- |
+| C05 | Exact TEXT/UUID migration checks, 18 actual HTTP/PostgreSQL/browser groups and five separate interface boundary groups passed. |
+| C08 | Eight real HTTP/PostgreSQL projection groups, 15 source-domain checks and the V6/V7 provider contracts passed. |
+| Combined Web | **41 passed, exit 0**: three portal cases, eight profile-integrity cases, 24 D01 eligibility cases and six grievance-panel cases. The source manifest and log digest bind this local run; CSP bypass was false. |
+
+A narrow notification fixture/diagnostic correction is being prepared after the separately retained main failure. These local results precede that correction and do not claim that the historical failure has been repaired. The final published combined head must still pass its complete remote CI and deployment gates.
+
+D01 keeps the existing native document, revision, lifecycle and attachment stores as the private originals. Its case/event records bind exactly one original booking participant or training enrollment. The same current-source evaluator now contributes to booking confirmation, readiness, operational clearance, trip completion and training. A participant's editable health declaration remains separate from evidence and actual consent. Generic document, independent-review, owner-approval and operational-evidence readers exclude the private `D01-` sources; the integration retains these exclusions.
+
+C05 continues to use the canonical asset/calendar and B05 issue/return records. B06 continues to bind the native signed contract and existing financial entries. D01's consent and eligibility additions do not create replacement maintenance, stock, legal or financial ledgers.
+
+### Prior Purple checks remain diagnostic history
+
+The superseded Purple head `83bb1bd` failed its stale diagnostic environment and three portal browser cases. Its complete full-Web artifact nevertheless provides exact diagnostic evidence: **940 passed, 3 failed, 0 skipped, 0 flaky**, with all six grievance-panel cases passing on their first attempt. The only browser failures expected nine center command cards after the B06 service added the tenth. Head `98c9902` passed the complete API gate, including C05, B06, formal grievances and B08 cancellation, and passed the corrected form-library diagnostic; its focused Web job retained the same three portal failures. The narrow portal correction passed all three local desktop/tablet/mobile cases. Head `8c9a606` had no PR workflows observed before the concurrent main integration because the PR was no longer mergeable.
+
+These receipts diagnose the previous source; they do not pass the new combined head. **PR722 will be delivery 52 only after its exact accepted merge is recorded.** The delivered count in this version is 51: the immutable 49 historical deliveries, C12 delivery 50 and concurrent D01 delivery 51. The new combined API/Web/full-policy checks, any required fixture correction, accepted merge and matching deployment remain separate pending release evidence. PR666's historical cancelled Web execution remains unchanged.
+
+### Notification fixture failure preservation
+
+The demonstrated fixture race is corrected without changing the notification service, authentication, foreign keys or transaction retry policy. All four concurrent POSTs settle before their results are asserted or fixture cleanup starts. A cleanup error is retained separately and cannot replace the original request/assertion error; the Prisma disconnect is always attempted. The canonical HR step prints the API log and keeps a failing exit status when this acceptance fails.
+
+On a fresh isolated PostgreSQL database and the real combined API, the unchanged strict notification assertions passed. Two deliberate failure cases also passed their diagnostic assertions: one HTTP 500 alongside three delayed real-API 200 responses, and the same request failure with a temporary database cleanup rejection. Both waited for all requests, preserved the original error and completed disconnect; the harness removed only its own temporary trigger and synthetic records. The JSON register retains the source and log digests. This verifies the diagnostic/cleanup correction; it does not establish the cause of the historical serialization errors. The new exact-head CI must still pass all existing concurrency assertions.
 
 ## Historical delivery index
 

@@ -139,7 +139,70 @@ enum HrRequestStatus {
   CLOSED
 }
 
+// Actual participant/guardian signatures and source-bound decisions. These are
+// separate from the account's editable health declaration and never a diagnosis.
+model ParticipationCase {
+  id String @id @default(uuid())
+  organizationId String
+  bookingParticipantId String? @unique
+  trainingEnrollmentId String? @unique
+  participantAccountId String?
+  guardianAccountId String?
+  policyDocumentId String
+  identityDocumentId String
+  guardianDocumentId String?
+  medicalDocumentId String?
+  revision Int @default(1)
+  digest String
+  state Json
+  createdByAccountId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  bookingParticipant BookingParticipant? @relation(fields:[bookingParticipantId],references:[id],onDelete:Restrict)
+  trainingEnrollment TrainingEnrollment? @relation(fields:[trainingEnrollmentId],references:[id],onDelete:Restrict)
+  participantAccount Account? @relation("ParticipationCaseParticipant",fields:[participantAccountId],references:[id],onDelete:Restrict)
+  guardianAccount Account? @relation("ParticipationCaseGuardian",fields:[guardianAccountId],references:[id],onDelete:Restrict)
+  createdBy Account @relation("ParticipationCaseCreator",fields:[createdByAccountId],references:[id],onDelete:Restrict)
+  policyDocument ManagedDocument @relation("ParticipationPolicySource",fields:[policyDocumentId],references:[id],onDelete:Restrict)
+  identityDocument ManagedDocument @relation("ParticipationIdentitySource",fields:[identityDocumentId],references:[id],onDelete:Restrict)
+  guardianDocument ManagedDocument? @relation("ParticipationGuardianSource",fields:[guardianDocumentId],references:[id],onDelete:Restrict)
+  medicalDocument ManagedDocument? @relation("ParticipationMedicalSource",fields:[medicalDocumentId],references:[id],onDelete:Restrict)
+  events ParticipationEvent[]
+  @@index([organizationId,updatedAt])
+  @@index([participantAccountId])
+  @@index([guardianAccountId])
+  @@index([policyDocumentId])
+  @@index([identityDocumentId])
+  @@index([guardianDocumentId])
+  @@index([medicalDocumentId])
+}
+
+model ParticipationEvent {
+  id String @id @default(uuid())
+  caseId String
+  actorAccountId String
+  actorPersonId String
+  requestId String
+  action String
+  requestFingerprint String
+  beforeRevision Int
+  afterRevision Int
+  previousDigest String?
+  resultDigest String
+  evidenceHash String
+  payload Json
+  createdAt DateTime @default(now())
+  participationCase ParticipationCase @relation(fields:[caseId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorAccountId],references:[id],onDelete:Restrict)
+  actorPerson Person @relation(fields:[actorPersonId],references:[id],onDelete:Restrict)
+  @@unique([actorAccountId,requestId])
+  @@unique([caseId,afterRevision])
+  @@index([caseId,createdAt])
+}
+
 model Person {
+  participationEvents ParticipationEvent[]
   id String @id @default(uuid())
   firstName String
   lastName String
@@ -154,6 +217,10 @@ model Person {
 }
 
 model Account {
+  participationCreatedCases ParticipationCase[] @relation("ParticipationCaseCreator")
+  participationCases ParticipationCase[] @relation("ParticipationCaseParticipant")
+  participationGuardianCases ParticipationCase[] @relation("ParticipationCaseGuardian")
+  participationEvents ParticipationEvent[]
   procurementLabSessions ProcurementLabSession[]
   procurementApiProfile ProcurementApiProfile?
   payoutProfile ProviderPayoutProfile?
@@ -259,6 +326,7 @@ model Account {
 }
 
 model Organization {
+  participationCases ParticipationCase[]
   retailStockCounts StoreStockCount[]
   stockLocations StoreStockLocation[]
   storeStockTransfers StoreStockTransfer[]
@@ -801,6 +869,7 @@ model Booking {
 }
 
 model BookingParticipant {
+  participationCase ParticipationCase?
   id String @id @default(uuid())
   bookingId String
   accountId String?
@@ -1984,6 +2053,7 @@ enum TrainingSessionStatus {
 }
 
 model TrainingEnrollment {
+  participationCase ParticipationCase?
   id String @id @default(uuid())
   storeCourseOfferId String?
   storeCourseOffer StoreCourseOffer? @relation(fields:[storeCourseOfferId], references:[id], onDelete:Restrict)
@@ -2850,6 +2920,10 @@ model DocumentTemplate {
 }
 
 model ManagedDocument {
+  participationPolicyCases ParticipationCase[] @relation("ParticipationPolicySource")
+  participationIdentityCases ParticipationCase[] @relation("ParticipationIdentitySource")
+  participationGuardianCases ParticipationCase[] @relation("ParticipationGuardianSource")
+  participationMedicalCases ParticipationCase[] @relation("ParticipationMedicalSource")
   operationalEvidence OperationalEvidence[]
   id String @id @default(uuid())
   organizationId String

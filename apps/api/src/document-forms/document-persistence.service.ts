@@ -11,6 +11,7 @@ import { templateObject, templateText, templateFields, assertCompatibleTemplateF
 import { validateDocumentPayload } from './document-payload';
 import { PlatformDocumentSourceService } from './platform-document-source.service';
 import { PLATFORM_SOURCE_KEY, sourceDigest } from './platform-document-source.domain';
+import { assertNotParticipationSource, genericDocumentTemplateWhere } from '../participation/participation-privacy';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];contentAr?:string;contentEn?:string};
 @Injectable()
@@ -36,8 +37,9 @@ export class DocumentPersistenceService {
   }
 
   async addAttachment(accountId:string,id:string,input:{filename?:unknown;mimeType?:unknown;base64?:unknown}){
-    const document=await this.db.managedDocument.findUnique({where:{id},select:{id:true,organizationId:true,status:true}});
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{id:true,organizationId:true,status:true,template:{select:{code:true}}}});
     if(!document)throw new NotFoundException('Document not found.');
+    assertNotParticipationSource(document.template.code);
     await this.authz.assert(accountId,document.organizationId,'REVISE');
     if(document.status!=='DRAFT')throw new ConflictException('أرفق ملفات PDF بالمسودة قبل إرسالها للاعتماد؛ السجلات المعتمدة غير قابلة للتعديل.');
     if(input?.mimeType!=='application/pdf'||typeof input?.base64!=='string'||input.base64.length>14_000_000)throw new BadRequestException('ارفع ملف PDF لا يتجاوز 10 ميغابايت.');
@@ -50,8 +52,9 @@ export class DocumentPersistenceService {
     const sha256=createHash('sha256').update(bytes).digest('hex');
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,document.organizationId,'REVISE',tx);
-      const current=await tx.managedDocument.findUnique({where:{id},select:{organizationId:true,status:true}});
+      const current=await tx.managedDocument.findUnique({where:{id},select:{organizationId:true,status:true,template:{select:{code:true}}}});
       if(!current||current.organizationId!==document.organizationId)throw new NotFoundException('Document not found.');
+      assertNotParticipationSource(current.template.code);
       if(current.status!=='DRAFT')throw new ConflictException('أرفق ملفات PDF بالمسودة قبل إرسالها للاعتماد؛ السجلات المعتمدة غير قابلة للتعديل.');
       return tx.managedDocumentAttachment.upsert({
         where:{documentId_sha256:{documentId:id,sha256}},
@@ -63,15 +66,17 @@ export class DocumentPersistenceService {
   }
 
   async listAttachments(accountId:string,id:string){
-    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true,template:{select:{code:true}}}});
     if(!document)throw new NotFoundException('Document not found.');
+    assertNotParticipationSource(document.template.code);
     await this.authz.assert(accountId,document.organizationId,'DOCUMENT_READ');
     return this.db.managedDocumentAttachment.findMany({where:{documentId:id,organizationId:document.organizationId},select:{id:true,documentId:true,filename:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'asc'}});
   }
 
   async attachmentBytes(accountId:string,id:string,attachmentId:string){
-    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true,template:{select:{code:true}}}});
     if(!document)throw new NotFoundException('Document not found.');
+    assertNotParticipationSource(document.template.code);
     await this.authz.assert(accountId,document.organizationId,'DOCUMENT_READ');
     const attachment=await this.db.managedDocumentAttachment.findFirst({where:{id:attachmentId,documentId:id,organizationId:document.organizationId}});
     if(!attachment)throw new NotFoundException('PDF attachment not found.');
@@ -91,6 +96,7 @@ export class DocumentPersistenceService {
     await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE');
     if(input.code===COOPERATION_CODE||isLibraryCode(String(input.code??'').trim().toUpperCase())) throw new ForbiddenException('نموذج العقد محكوم بمكتبة العقود ومسار التوقيع.');
     const code=templateText(input.code,'Template code');
+    assertNotParticipationSource(code.toUpperCase());
     if(code.startsWith(CUSTOM_TEMPLATE_PREFIX)&&(!custom||!isCustomTemplateCode(code)))throw new ForbiddenException('Custom template codes are allocated by the custom-template endpoint.');
     if(code===COOPERATION_CODE||isLibraryCode(code))throw new ForbiddenException('استخدم مسار العقود المتخصص.');
     if(!/^[A-Z][A-Z0-9-]{0,99}$/.test(code)||!DOCUMENT_DEPARTMENTS.includes(input.department as never))throw new BadRequestException('Invalid template code or department.');
@@ -107,6 +113,7 @@ export class DocumentPersistenceService {
     templateObject(input,['titleAr','titleEn','fields','printable']);
     const current=await this.db.documentTemplate.findUnique({where:{id}});
     if(!current) throw new NotFoundException('Document template not found.');
+    assertNotParticipationSource(current.code);
     if(current.code===COOPERATION_CODE||isLibraryCode(current.code)) throw new ForbiddenException('نموذج العقد محدد الإصدار ولا يعدل من مسار المستندات.');
     await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE');
     if(current.status!=='ACTIVE') throw new BadRequestException('Only ACTIVE templates can be revised.');
@@ -120,6 +127,7 @@ export class DocumentPersistenceService {
       await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE',tx);
       const latest=await tx.documentTemplate.findUnique({where:{id}});
       if(!latest||latest.status!=='ACTIVE'||latest.version!==current.version) throw new BadRequestException('Template changed concurrently; reload before revising.');
+      assertNotParticipationSource(latest.code);
       await tx.documentTemplate.update({where:{id},data:{status:'INACTIVE'}});
       const template=await tx.documentTemplate.create({data:{organizationId:current.organizationId,code:current.code,titleAr,titleEn,department:current.department,version:current.version+1,status:'ACTIVE',printable:input.printable??current.printable,fields:fields as never}});
       if(isCustomTemplateCode(template.code))await this.auditCustomTemplate(tx,accountId,template,current);
@@ -129,7 +137,7 @@ export class DocumentPersistenceService {
 
   async listTemplates(accountId:string,organizationId:string,department?:string){
     await this.authz.assert(accountId,organizationId,'TEMPLATE_LIST');
-    return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
+    return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],AND:[genericDocumentTemplateWhere],...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
   }
 
   async createDocument(accountId:string,input:{organizationId:string;templateId:string;department:string;contentHash:string;payload:Record<string,unknown>;sourceBinding?:unknown}){
@@ -137,6 +145,7 @@ export class DocumentPersistenceService {
     await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE');
     const t=await this.db.documentTemplate.findFirst({where:{id:input.templateId,organizationId:input.organizationId,status:'ACTIVE'}});
     if(!t) throw new NotFoundException('Active document template not found in organization scope.');
+    assertNotParticipationSource(t.code);
     if(t.code===COOPERATION_CODE||isLibraryCode(t.code)) throw new ForbiddenException('أنشئ العقد من مساحة العقود لضبط الأطراف والتوقيعات.');
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
     if(typeof input.contentHash!=='string'||!input.contentHash.trim()||input.contentHash.length>512) throw new BadRequestException('Content hash is required.');
@@ -146,6 +155,7 @@ export class DocumentPersistenceService {
       await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE',tx);
       const live=await tx.documentTemplate.findFirst({where:{id:t.id,organizationId:input.organizationId,status:'ACTIVE'}});
       if(!live||live.version!==t.version)throw new BadRequestException('Template changed concurrently; reload before creating a document.');
+      assertNotParticipationSource(live.code);
       const source=input.sourceBinding===undefined?null:await this.sources.capture(tx,accountId,input.organizationId,live.fields,input.sourceBinding);
       const payload=input.sourceBinding===undefined?input.payload:this.sources.withSnapshot(input.payload,source);
       validateDocumentPayload(live.fields,payload);
@@ -288,6 +298,7 @@ export class DocumentPersistenceService {
   }
 
   private assertGeneric(code:string){
+    assertNotParticipationSource(code);
     if(code===COOPERATION_CODE||isLibraryCode(code)) throw new ForbiddenException('استخدم مكتبة العقود أو مساحة أطراف العقد.');
   }
 }

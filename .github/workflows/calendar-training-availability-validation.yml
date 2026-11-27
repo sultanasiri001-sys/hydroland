@@ -30,6 +30,7 @@ jobs:
     env:
       CI: 'true'
       NODE_ENV: test
+      D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
       DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_availability_ci
       AVAILABILITY_TIMEZONE: ${{ matrix.timezone }}
     steps:

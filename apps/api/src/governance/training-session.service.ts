@@ -1,4 +1,5 @@
 import { trainingOperationalPolicy } from './training-operational-policy';
+import { participationTrainingGate } from '../participation/participation-evaluator';
 import { assertStandardSupervisionAvailable, assertTrainingStandardReady, assertTrainingDivePlan, standardRequest } from './training-standard-store';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -93,6 +94,7 @@ export class TrainingSessionService {
    await this.eligible(tx,instructorId,enrollment.centerOrganizationId);
    const dates=this.dates(body);
    await standardRequest(()=>assertTrainingStandardReady(tx,enrollment,instructorId,dates.startsAt,context));
+   await participationTrainingGate(tx,enrollment.id,dates.startsAt,dates.endsAt);
    await standardRequest(()=>assertTrainingDivePlan(tx,enrollment.id,instructorId,dates.startsAt,dates.endsAt,context));
    await assertStandardSupervisionAvailable(tx,instructorId,dates.startsAt,dates.endsAt);
    if(stageId&&!await tx.trainingStage.findFirst({where:{id:stageId,trainingRecord:{enrollmentId:enrollment.id}},select:{id:true}}))throw new BadRequestException('المرحلة ليست ضمن سجل هذه الدورة.');
@@ -125,6 +127,7 @@ export class TrainingSessionService {
    if(!sessionControls(course,row).canReschedule)throw new ConflictException('يمكن تعديل موعد الجلسة المجدولة قبل فتح الحضور فقط.');
    await this.eligible(tx,row.instructorAccountId,centerId);
    await standardRequest(()=>assertTrainingStandardReady(tx,course,row.instructorAccountId,dates.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));
+   await participationTrainingGate(tx,course.id,dates.startsAt,dates.endsAt);
    await standardRequest(()=>assertTrainingDivePlan(tx,course.id,row.instructorAccountId,dates.startsAt,dates.endsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null,id));
    await assertStandardSupervisionAvailable(tx,row.instructorAccountId,dates.startsAt,dates.endsAt,id);
    await this.assertAvailable(tx,row.instructorAccountId,course.studentAccountId,dates.startsAt,dates.endsAt,id);
@@ -160,6 +163,7 @@ export class TrainingSessionService {
    if(!controls.actions.includes(action))throw new ConflictException('الإجراء غير متاح في حالة الجلسة الحالية. يفتح الحضور قبل الموعد بـ30 دقيقة، ويبدأ التدريب بعد تسجيل الحضورين وحلول الموعد.');
    if(action!=='CANCEL')await this.eligible(tx,row.instructorAccountId,course.centerOrganizationId);
    if(action!=='CANCEL')await standardRequest(()=>assertTrainingStandardReady(tx,course,row.instructorAccountId,row.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));
+   if(action!=='CANCEL')await participationTrainingGate(tx,course.id,row.startsAt,row.endsAt??undefined);
    if(action!=='CANCEL')await assertStandardSupervisionAvailable(tx,row.instructorAccountId,row.startsAt,row.endsAt,id);
    if(action==='START')await standardRequest(()=>assertTrainingDivePlan(tx,course.id,row.instructorAccountId,now,row.endsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null,id,true,now));
    if(action==='START')await this.assertAvailable(tx,row.instructorAccountId,course.studentAccountId,row.startsAt,row.endsAt!,id);

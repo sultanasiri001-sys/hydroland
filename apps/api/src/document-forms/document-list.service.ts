@@ -7,6 +7,7 @@ import { buildDepartmentTemplateCatalog } from './document-template-catalog';
 import { buildOperationalDocumentCatalog } from './operational-document-catalog';
 import { buildHrDocumentCatalog } from './hr-document-catalog';
 import { PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, STAFFING_DEPARTMENTS, record } from '../hr/staffing-catalog';
+import { genericDocumentTemplateWhere } from '../participation/participation-privacy';
 
 @Injectable()
 export class DocumentListService {
@@ -16,7 +17,7 @@ export class DocumentListService {
   async list(accountId:string,organizationId:string){
     await this.authz.assert(accountId,organizationId,'DOCUMENT_LIST');
     return this.db.managedDocument.findMany({
-      where:{organizationId,template:{NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}]}},
+      where:{organizationId,template:{NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],AND:[genericDocumentTemplateWhere]}},
       include:{template:true,attachments:{select:{id:true,filename:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'asc'}}},
       orderBy:[{updatedAt:'desc'},{createdAt:'desc'}],
     });
@@ -37,13 +38,13 @@ export class DocumentListService {
       const extensions=internal?buildHrDocumentCatalog(organizationId):[];
       const sourceTemplates=[...baseline,...extensions];
       const templates=await tx.documentTemplate.findMany({
-        where:{organizationId,NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}]},
+        where:{organizationId,NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],AND:[genericDocumentTemplateWhere]},
         select:{id:true,code:true,titleAr:true,titleEn:true,department:true,version:true,status:true},
         orderBy:[{code:'asc'},{version:'desc'}],
       });
       const groups=await tx.managedDocument.groupBy({
         by:['templateId','department','status'],
-        where:{organizationId,template:{organizationId,NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}]}},
+        where:{organizationId,template:{organizationId,NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],AND:[genericDocumentTemplateWhere]}},
         _count:{_all:true},
       });
       const codes=new Map(STAFFING_DEPARTMENTS.map(d=>[d.code as string,d.nameAr]));

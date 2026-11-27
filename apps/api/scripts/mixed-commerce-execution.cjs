@@ -60,7 +60,7 @@ exports.completeRental = async (f, line, offer) => {
   assert.equal(await f.db.auditEvent.count({where: {resource: 'EquipmentRental', resourceId: line.sourceId, action: 'EQUIPMENT_RENTAL_ITEM_RETURNED'}}), 1);
 };
 
-exports.completeCourse = async (f, line) => {
+exports.prepareCourse = async (f, line) => {
   const {trainingStandardFixture} = await import('./training-standard-isolated-fixture.mjs');
   const standards = trainingStandardFixture(f.db, f.base);
   const instructor = await f.account('instructor');
@@ -71,6 +71,13 @@ exports.completeCourse = async (f, line) => {
     instructorAccountId: instructor.id, expectedUpdatedAt: enrollment.updatedAt.toISOString(), reason: 'Synthetic B08 instructor assignment', transferUpcomingSessions: true,
   }));
   const assigned = await standards.bind(line.sourceId, 'B08-SYNTHETIC-SKILL');
+  return {standards,instructor,assigned};
+};
+
+exports.completeCourse = async (f, line, prepared) => {
+  assert.ok(prepared, 'Native course sources and consent must be prepared before the original schedule');
+  const {standards,instructor}=prepared;
+  const assigned=await f.db.trainingEnrollment.findUniqueOrThrow({where:{id:line.sourceId}});
   const sessionId = randomUUID(), startsAt = new Date(Date.now() + 3000).toISOString(), endsAt = new Date(Date.now() + 60_000).toISOString();
   f.ok(await f.call(f.owner, `/center/me/training/enrollments/${line.sourceId}/sessions`, 'POST', {
     requestId: sessionId, instructorAccountId: instructor.id, expectedUpdatedAt: assigned.updatedAt.toISOString(),
@@ -122,10 +129,16 @@ exports.completeTrip = async (f, line, offer) => {
   await compliance.update(f.owner.id, tripId, {regulatoryStatus: 'APPROVED', permitStatus: 'APPROVED', permitReference: 'SYNTHETIC-B08', authorityReference: 'SYNTHETIC-NOT-A-PERMIT'});
   const participants = await f.db.bookingParticipant.findMany({where: {bookingId: line.sourceId}});
   assert.equal(participants.length, 1);
-  for (const participant of participants) f.ok(await f.call(f.owner,
+  const {participationFixture}=await import('./participation-isolated-fixture.mjs');
+  const participation=participationFixture(f.db,f.base);
+  for (const participant of participants) {
+    await participation.prepare('BOOKING_PARTICIPANT',participant.id,{review:false});
+    const current=await f.db.bookingParticipant.findUniqueOrThrow({where:{id:participant.id}});
+    f.ok(await f.call(f.owner,
     `/trips/admin/${tripId}/bookings/${line.sourceId}/participants/${participant.id}/eligibility`, 'PATCH', {
-      status: 'ELIGIBLE', expectedUpdatedAt: participant.updatedAt.toISOString(), reason: 'Synthetic B08 eligibility evidence only', reviewed: true,
+      status: 'ELIGIBLE', expectedUpdatedAt: current.updatedAt.toISOString(), reason: 'Synthetic B08 eligibility evidence only', reviewed: true,
     }));
+  }
   f.ok(await f.call(f.owner, `/trips/admin/${tripId}/bookings/${line.sourceId}/confirm`, 'PATCH'));
   const granted = f.ok(await f.call(f.owner, `/trips/admin/${tripId}/operational-clearance`, 'POST', {reason: 'Synthetic B08 isolated operational review'}));
   const clearance = f.app.get(f.load('trips/operational-clearance.service.js').OperationalClearanceService);

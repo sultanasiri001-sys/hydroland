@@ -143,8 +143,9 @@ try{
   const owner=await account(),centerInstructor=await account(),targetInstructor=await account(),centerStudent=await account();
   await db.roleAssignment.create({data:{accountId:owner.id,role:'DIVE_CENTER',status:'ACTIVE'}});
   const center=await db.organization.create({data:{displayName:'Availability center fixture',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:owner.id,members:{create:[{accountId:owner.id,role:'OWNER',status:'ACTIVE'},{accountId:centerInstructor.id,role:'INSTRUCTOR',status:'ACTIVE'},{accountId:targetInstructor.id,role:'INSTRUCTOR',status:'ACTIVE'}]}}});
-  let centerCourse=await enrollment(centerInstructor.id,centerStudent.id);
+  let centerCourse=await enrollment(centerInstructor.id,centerStudent.id,false);
   centerCourse=await db.trainingEnrollment.update({where:{id:centerCourse.id},data:{centerOrganizationId:center.id},include:{record:true}});
+  centerCourse=await standards.bind(centerCourse.id);
   const centerSession=await schedule(centerCourse,40),centerResource=await resource(centerInstructor.id),targetResource=await resource(targetInstructor.id);
   await calendar.allocate(owner.id,(await trip(41)).id,[centerResource.id]);
   await calendar.allocate(owner.id,(await trip(40)).id,[targetResource.id]);
@@ -157,7 +158,7 @@ try{
   await conflict(()=>assignments.assignEnrollment(owner.id,centerCourse.id,{...reassign,expectedUpdatedAt:currentCourse.updatedAt.toISOString(),transferUpcomingSessions:true},true),'bulk instructor transfer cannot bypass calendar availability');
   check((await db.trainingEnrollment.findUniqueOrThrow({where:{id:centerCourse.id}})).instructorAccountId===centerInstructor.id,'rejected bulk transfer rolls back lead instructor');
 
-  const liveTimes={startsAt:new Date(Date.now()-300000),endsAt:new Date(Date.now()+3600000)};
+  const liveTimes={startsAt:new Date((await standards.consentAt(centerCourse.id)).getTime()+1),endsAt:new Date(Date.now()+3600000)};
   const live=await db.trainingSession.create({data:{trainingRecordId:centerCourse.record.id,instructorAccountId:centerInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
   const historicalTrip=await db.trip.create({data:{title:'Legacy overlap fixture',type:'TEST',capacity:1,...liveTimes}});
   await db.calendarEvent.create({data:{type:'TRIP',referenceType:'TRIP',referenceId:historicalTrip.id,title:'Legacy overlap fixture',...liveTimes,allocations:{create:{resourceId:centerResource.id,...liveTimes}}}});

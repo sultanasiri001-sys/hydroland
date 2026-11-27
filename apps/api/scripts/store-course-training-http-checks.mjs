@@ -57,7 +57,7 @@ export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,stude
  assert.equal(ok(await request(instructor,planPath)).record.progressPercent,0,'reassessment recalculates progress');
  ok(await request(instructor,'/training/skills/'+skillId+'/assessment','PATCH',{status:'COMPETENT'}));
  // Move only this isolated fixture into its start window; never wait or alter a production clock.
- await db.trainingSession.update({where:{id:sessionId},data:{startsAt:new Date(Date.now()-2000),endsAt:new Date(Date.now()+600000)}});
+ await db.trainingSession.update({where:{id:sessionId},data:{startsAt:new Date((await standards.consentAt(enrollment.id)).getTime()+1),endsAt:new Date(Date.now()+600000)}});
  ok(await action(owner,'START'));ok(await action(owner,'COMPLETE'));
  assert.equal((await request(instructor,completePath,'POST',complete())).status,409,'a stale record revision cannot complete the course');
  plan=ok(await request(instructor,planPath));assert.equal(plan.canComplete,true);

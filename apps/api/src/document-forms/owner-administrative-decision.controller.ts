@@ -7,6 +7,7 @@ import { DocumentAuthorizationService } from './document-authorization.service';
 import { DocumentAssetService } from './document-asset.service';
 import { decisionDigest, decisionInput, decisionKey, OWNER_DECISION_NOTICE, OWNER_DECISION_POLICY, OWNER_DECISION_PREFIX, recordVersion, routineEligibility, scopeId, verifyDecision } from './owner-administrative-decision.domain';
 import { renderOwnerDecisionPdf } from './owner-administrative-decision.pdf';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 type Actor = { auth: { accountId: string } };
 
@@ -24,6 +25,7 @@ export class OwnerAdministrativeDecisionController {
     await this.owner(tx, accountId, org);
     const d = await tx.managedDocument.findFirst({ where: { id, organizationId: org }, include: { template: true } });
     if (!d) throw new NotFoundException('Document not found in organization scope.');
+    assertNotParticipationSource(d.template.code);
     const eligibility = routineEligibility(d);
     return { d, eligibility };
   }
