@@ -154,6 +154,28 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: A14 owner registration, invitation and independent marine review
+        env:
+          CI: "true"
+          NODE_ENV: test
+          A14_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+        run: |
+          mkdir -p artifacts
+          for a14_target in "16:5432" "18:5433"; do
+            a14_pg_major=${a14_target%%:*}
+            a14_pg_port=${a14_target##*:}
+            psql "postgresql://hydroland:hydroland@127.0.0.1:${a14_pg_port}/hydroland" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a14_owner_onboarding_test_ci'
+            DATABASE_URL="postgresql://hydroland:hydroland@127.0.0.1:${a14_pg_port}/a14_owner_onboarding_test_ci" \
+            A14_ONBOARDING_RESULT_FILE="artifacts/a14-onboarding-pg${a14_pg_major}.json" \
+              node apps/api/scripts/a14-owner-onboarding-http-e2e.mjs
+          done
+      - name: Retain A14 synthetic onboarding receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a14-owner-onboarding-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/a14-onboarding-*.json
+          if-no-files-found: warn
       - name: Commerce original terms, refund boundaries and provider operations
         run: |
           node --test apps/api/scripts/commerce-refund-policy.test.cjs apps/api/scripts/commerce-contract-snapshot.test.cjs apps/api/scripts/trip-booking-contract.test.cjs apps/api/scripts/trip-payment-confirmation.test.cjs apps/api/scripts/center-service-entitlement.test.cjs apps/api/scripts/moyasar-refund-provider-validation.cjs apps/api/scripts/commerce-webhook-dispatch.test.cjs
