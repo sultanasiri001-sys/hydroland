@@ -1,9 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { createServer } from 'node:http';
+import { participationFixture } from './participation-isolated-fixture.mjs';
 
 const db=new PrismaClient();
 const base=process.env.BOOKING_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+const participation=participationFixture(db,base);
 const suffix=Date.now().toString();
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
@@ -40,6 +42,7 @@ try{
 
   let response=await fetch(`${base}/trips/admin`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({title:`Booking Runtime E2E ${suffix}`,type:'SHORE_DIVE',startsAt:forecastTime.toISOString(),endsAt:forecastEnd.toISOString(),capacity:2,status:'DRAFT',locationName:'Asir E2E Dive Site',latitude:18.0185,longitude:41.4582})});
   trip=await json(response);if(!trip.id||trip.location?.locationName!=='Asir E2E Dive Site')throw new Error('Trip operational location was not persisted through admin create API');
+  const provider=await participation.provider();await db.trip.update({where:{id:trip.id},data:{organizationId:provider.id}});
   response=await fetch(`${base}/trips/admin/${trip.id}/price`,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({pricePerSeatMinor:0})});const freePrice=await json(response);if(freePrice.configured!==true||freePrice.pricePerSeatMinor!==0||freePrice.currency!=='SAR')throw new Error('Explicit free trip pricing was not persisted before opening');
   const openPreview=await json(await fetch(`${base}/trips/admin/${trip.id}/lifecycle`,{headers:auth(adminToken)}));
   response=await fetch(`${base}/trips/admin/${trip.id}/status`,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({status:'OPEN',requestId:randomUUID(),reason:'Open explicitly priced CI trip',expectedUpdatedAt:openPreview.trip.updatedAt,expectedState:openPreview.stateToken})});const opened=await json(response);if(opened.status!=='OPEN')throw new Error('Explicitly priced trip did not open');trip={...trip,...opened};
@@ -70,8 +73,11 @@ try{
   response=await fetch(`${base}/trips/bookings/${bookingId}/cancel`,{method:'PATCH',headers:auth(otherToken)});if(response.status!==404)throw new Error(`Cross-user action cancellation expected 404, got ${response.status}`);
 
   response=await fetch(`${base}/trips/admin/${trip.id}/bookings/${bookingId}/confirm`,{method:'PATCH',headers:auth(adminToken)});if(response.status!==409)throw new Error(`Incomplete participant eligibility expected 409, got ${response.status}`);if((await db.booking.findUniqueOrThrow({where:{id:bookingId}})).status!=='PENDING')throw new Error('Failed eligibility confirmation mutated booking');
+  await participation.prepare('BOOKING_PARTICIPANT',companion.id,{participantAccountId:other.id,review:false});
+  await participation.prepare('BOOKING_PARTICIPANT',primary.id,{review:false});
+  const currentCompanion=await db.bookingParticipant.findUniqueOrThrow({where:{id:companion.id}});
   const eligibilityUrl=`${base}/trips/admin/${trip.id}/bookings/${bookingId}/participants/${companion.id}/eligibility`;
-  const reviewBody={status:'ELIGIBLE',expectedUpdatedAt:companion.updatedAt,reason:'Isolated procedural eligibility review',reviewed:true};
+  const reviewBody={status:'ELIGIBLE',expectedUpdatedAt:currentCompanion.updatedAt.toISOString(),reason:'Isolated procedural eligibility review',reviewed:true};
   response=await fetch(eligibilityUrl,{method:'PATCH',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify(reviewBody)});if(response.status!==403)throw new Error('Non-admin eligibility review was not denied');
   response=await fetch(eligibilityUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({...reviewBody,reviewed:false})});if(response.status!==400)throw new Error('Unacknowledged eligibility review was not denied');
   response=await fetch(eligibilityUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({...reviewBody,expectedUpdatedAt:'2000-01-01T00:00:00.000Z'})});if(response.status!==409)throw new Error('Stale eligibility review was not denied');
@@ -83,7 +89,7 @@ try{
   response=await fetch(`${base}/trips/admin/${trip.id}/bookings/${bookingId}/confirm`,{method:'PATCH',headers:auth(adminToken)});
   if(response.status!==409||(await db.booking.findUniqueOrThrow({where:{id:bookingId}})).status!=='PENDING')throw new Error('Primary participant must receive a review before enforced confirmation');
   const primaryUrl=`${base}/trips/admin/${trip.id}/bookings/${bookingId}/participants/${primary.id}/eligibility`;
-  const primaryReview={...reviewBody,expectedUpdatedAt:primary.updatedAt,reason:'Synthetic primary participant review'};
+  const primaryReview={...reviewBody,expectedUpdatedAt:(await db.bookingParticipant.findUniqueOrThrow({where:{id:primary.id}})).updatedAt.toISOString(),reason:'Synthetic primary participant review'};
   const reviewedPrimary=await json(await fetch(primaryUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(primaryReview)}));
   if(reviewedPrimary.find(row=>row.id===primary.id)?.eligibilityStatus!=='ELIGIBLE')throw new Error('Authorized review did not clear primary participant');
   const primaryAudit=await db.auditEvent.findFirstOrThrow({where:{action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resourceId:primary.id}});
@@ -103,9 +109,11 @@ try{
 
   console.log('Booking HTTP/DB E2E passed: explicit free pricing, calendar lifecycle, auth, trip coordinates, trip-time marine forecast, human weather review, approval invalidation on forecast change, multi-seat participants, capacity, ownership, confirmation and self-cancel persistence.');
 } finally {
+  await participation.cleanup();
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});const resourceIds=[trip?.id,bookingId,calendarResourceId].filter(Boolean);if(resourceIds.length)await db.auditEvent.deleteMany({where:{resourceId:{in:resourceIds}}}).catch(()=>{});if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
   if(trip){await db.crewAssignment.deleteMany({where:{tripId:trip.id}}).catch(()=>{});await db.bookingParticipant.deleteMany({where:{booking:{tripId:trip.id}}}).catch(()=>{});await db.payment.deleteMany({where:{booking:{tripId:trip.id}}}).catch(()=>{});await db.booking.deleteMany({where:{tripId:trip.id}}).catch(()=>{});await db.safetyChecklist.deleteMany({where:{tripId:trip.id}}).catch(()=>{});await db.$executeRaw`DELETE FROM "TripWeatherReview" WHERE "tripId"=${trip.id}`.catch(()=>{});await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"=${trip.id}`.catch(()=>{});await db.operationalSetting.delete({where:{key:`trip-price:${trip.id}`}}).catch(()=>{});}
   if(calendarEventId)await db.calendarAllocation.deleteMany({where:{eventId:calendarEventId}}).catch(()=>{});if(calendarEventId)await db.calendarEvent.delete({where:{id:calendarEventId}}).catch(()=>{});if(calendarResourceId)await db.calendarResource.delete({where:{id:calendarResourceId}}).catch(()=>{});if(trip)await db.trip.delete({where:{id:trip.id}}).catch(()=>{});
+  await participation.cleanup();
   if(previousWeather)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:previousWeather.value}}).catch(()=>{});else await db.operationalSetting.delete({where:{key:'WEATHER_GATE'}}).catch(()=>{});
   for(const account of accounts.reverse()){await db.diverProfile.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{});}for(const person of people.reverse()){await db.credential.deleteMany({where:{personId:person.id}}).catch(()=>{});await db.person.delete({where:{id:person.id}}).catch(()=>{});}
   if(weatherServer)await new Promise(resolve=>weatherServer.close(()=>resolve()));await db.$disconnect();

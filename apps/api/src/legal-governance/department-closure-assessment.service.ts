@@ -7,6 +7,7 @@ import { documentReadHash, reviewPlatform } from '../document-forms/internal-doc
 import { decisionDigest, scopeId } from '../document-forms/owner-administrative-decision.domain';
 import { COOPERATION_CODE } from '../document-forms/cooperation-contract.domain';
 import { LIBRARY_PREFIX } from '../document-forms/contract-library.domain';
+import { assertNotParticipationSource, genericDocumentTemplateWhere } from '../participation/participation-privacy';
 import { DepartmentCode } from '../governance/department-ownership.domain';
 import { OPERATING_CYCLE_CLOSURE_GATES } from '../document-forms/department-operating-cycle.catalog';
 import { assessmentDepartment, assessmentDigest, assessmentInput, assessmentReference, assessmentSpecification, assessmentState, CLOSURE_ASSESSMENT_NOTICE, CLOSURE_ASSESSMENT_POLICY, GateInput, publicAssessmentGates, readAssessment, SavedEvidence, SavedGate } from './department-closure-assessment.domain';
@@ -34,6 +35,7 @@ async function resolveEvidence(tx: Tx, organizationId: string, department: Depar
       },
     });
     if (!d || d.template.organizationId !== organizationId || d.template.department !== department) throw new ForbiddenException('مرجع المستند غير متاح في نطاق هذا التقييم.');
+    assertNotParticipationSource(d.template.code);
     if (d.version !== e.version) throw new ConflictException('تغير إصدار المستند المرجعي؛ أعد قراءة الإصدار الحالي.');
     const revision = await tx.documentRevision.findUnique({ where: { documentId_version: { documentId: d.id, version: d.version } } });
     if (!revision || revision.contentHash !== d.contentHash || decisionDigest(revision.payload) !== decisionDigest(d.payload)) throw new ConflictException('أدلة إصدار المستند المرجعي غير متسقة.');
@@ -89,6 +91,11 @@ export class DepartmentClosureAssessmentService {
     const rows = await tx.departmentClosureAssessment.findMany({ where: { organizationId: p.id, department }, orderBy: { revision: 'desc' }, take: 51 });
     const current = rows[0];
     for (const row of rows) readAssessment(row);
+    if (current) {
+      const ids = [...new Set(readAssessment(current).flatMap(gate => gate.evidence.map(e => e.documentId)))];
+      const sources = ids.length ? await tx.managedDocument.findMany({ where: { id: { in: ids } }, select: { template: { select: { code: true } } } }) : [];
+      for (const source of sources) assertNotParticipationSource(source.template.code);
+    }
     return {
       schemaVersion: 1, policy: CLOSURE_ASSESSMENT_POLICY, organizationId: p.id, department, specificationVersion: assessmentSpecification(department), expectedRevision: current?.revision ?? 0,
       current: current ? { id: current.id, revision: current.revision, recordedAt: current.createdAt.toISOString(), state: current.state, gates: publicAssessmentGates(readAssessment(current)), assessmentReference: assessmentReference(current), assessmentCurrent: await currentAssessment(tx, current, p) } : null,
@@ -110,7 +117,7 @@ export class DepartmentClosureAssessmentService {
       const rows = await tx.managedDocument.findMany({
         where: {
           organizationId, department,
-          template: { organizationId, department, NOT: [{ code: COOPERATION_CODE }, { code: { startsWith: LIBRARY_PREFIX } }] },
+          template: { organizationId, department, NOT: [{ code: COOPERATION_CODE }, { code: { startsWith: LIBRARY_PREFIX } }], AND: [genericDocumentTemplateWhere] },
           ...(after ? { id: { gt: after as string } } : {}),
           ...(term ? { OR: [{ referenceNumber: { contains: term, mode: 'insensitive' } }, { template: { titleAr: { contains: term, mode: 'insensitive' } } }] } : {}),
         },

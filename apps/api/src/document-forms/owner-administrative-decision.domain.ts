@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 export const OWNER_DECISION_POLICY = 'ROUTINE_OWNER_RECORD_V1';
 export const OWNER_DECISION_PREFIX = 'OWNER_ADMIN_DECISION:v1:';
@@ -57,5 +58,6 @@ export function verifyDecision(value: unknown, org: string, document: string, ve
   if (!plain(value)) throw new ConflictException('Invalid stored owner decision.');
   const { receiptHash, ...body } = value;
   if (value.policy !== OWNER_DECISION_POLICY || value.organizationId !== org || value.documentId !== document || value.sourceVersion !== version || value.status !== 'OWNER_DECISION_RECORDED' || typeof receiptHash !== 'string' || receiptHash !== decisionDigest(body) || !plain(value.source) || !plain(value.source.template) || !plain(value.source.branding) || typeof value.actorAccountId !== 'string' || typeof value.recordedAt !== 'string' || !Number.isFinite(Date.parse(value.recordedAt)) || value.independentReview !== false || value.electronicSignature !== false) throw new ConflictException('Stored owner-decision integrity check failed.');
+  assertNotParticipationSource(value.source.template.code);
   return value;
 }

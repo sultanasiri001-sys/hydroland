@@ -5,6 +5,7 @@ import { DocumentAuthorizationService } from './document-authorization.service';
 import { templateFields } from './document-template-input';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
+import { assertNotParticipationSource, genericDocumentTemplateWhere } from '../participation/participation-privacy';
 import { PLATFORM_SOURCE_KEY, SOURCE_KINDS, SourceKind, SourceReference, SourceRecord, SourceField, SourceValue, SourceSnapshot, sourceBinding, sourceReferences, sourceDigest, sourceSnapshot, validateSourceSnapshot } from './platform-document-source.domain';
 
 const accountSelect={id:true,email:true,status:true,updatedAt:true,person:{select:{firstName:true,lastName:true,phone:true,professional:true}}} as const;
@@ -125,6 +126,7 @@ export class PlatformDocumentSourceService {
    await this.owner(tx,actor,org);
    const t=await tx.documentTemplate.findFirst({where:{id:templateId,organizationId:org}});
    if(!t)throw new NotFoundException('القالب غير متاح في هذه الجهة.');
+   assertNotParticipationSource(t.code);
    if(t.code===COOPERATION_CODE||isLibraryCode(t.code))throw new BadRequestException('تدار مصادر العقود في مسار العقد المتخصص.');
    const snapshot=await this.resolve(tx,actor,org,t.fields,refs);
    return {organizationId:org,templateId:t.id,templateVersion:t.version,references:refs,snapshot};
@@ -151,7 +153,7 @@ export class PlatformDocumentSourceService {
  async audit(actor:string,org:string){
   const result=await this.db.serializable(async tx=>{
    await this.owner(tx,actor,org);
-   const docs=await tx.managedDocument.findMany({where:{organizationId:org},select:{id:true,referenceNumber:true,version:true,status:true,payload:true,template:{select:{code:true,titleAr:true,fields:true}}},orderBy:{referenceNumber:'asc'}});
+   const docs=await tx.managedDocument.findMany({where:{organizationId:org,template:genericDocumentTemplateWhere},select:{id:true,referenceNumber:true,version:true,status:true,payload:true,template:{select:{code:true,titleAr:true,fields:true}}},orderBy:{referenceNumber:'asc'}});
    const items=docs.filter(d=>d.template.code!==COOPERATION_CODE&&!isLibraryCode(d.template.code)).map(d=>{
     let snapshot:SourceSnapshot|null=null,state='SOURCE_NOT_SELECTED';
     try{snapshot=sourceSnapshot(d.payload as Record<string,unknown>,org);if(snapshot)state='LINKED';}catch{state='INVALID_SNAPSHOT';}

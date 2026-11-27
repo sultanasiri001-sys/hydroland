@@ -7,7 +7,9 @@ import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs'
 export async function checkTrainingCertificates(db,{base,instructor,student,owner,foreignOwner,organizationId,offerId,recordId,accounts,persons,ids,request,ok}){
  const loopback=value=>['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname);
  assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Certificate tests require isolated loopback API and database');
- const standards=trainingStandardFixture(db,base);
+ // These existing fixtures deliberately describe completed historical courses.
+ // They retain explicit legacy review and never fabricate earlier D01 consent.
+ const standards=trainingStandardFixture(db,base,{legacyHistoricalParticipation:true});
  const reviewers=[];
  for(const role of ['ADMIN','REVIEWER']){
   const person=await db.person.create({data:{firstName:'Certificate '+role,lastName:'Isolated QA'}});persons.push(person);

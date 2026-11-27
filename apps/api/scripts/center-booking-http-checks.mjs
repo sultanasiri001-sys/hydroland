@@ -1,7 +1,9 @@
 import {randomUUID} from 'node:crypto';
+import {participationFixture} from './participation-isolated-fixture.mjs';
 
 // Invoked only by the parent harness after its CI + loopback API/database guards.
 export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
+ const participation=participationFixture(db,base);
  const trips=[],bookingIds=[],resources=[],events=[],tag='BookingManagerCI-'+randomUUID();
  const weatherBefore=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
  const policyBefore=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
@@ -12,7 +14,7 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
  const command=(p,action='CONFIRM',extra={})=>({action,requestId:randomUUID(),expectedState:p.stateToken,...(action==='CANCEL'?{reason:'إلغاء تشغيلي موثق في اختبار معزول',financialAcknowledged:true}:{}),...extra});
  const apply=(id,body,token=ta)=>call(token,path(id)+'/actions','POST',body);
  const makeTrip=async(org=a.org.id,capacity=3)=>{const t=await db.trip.create({data:{organizationId:org,title:tag,type:'SHORE',status:'OPEN',capacity,startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000)}});trips.push(t.id);await db.operationalSetting.create({data:{key:'trip-price:'+t.id,value:{pricePerSeatMinor:1000,currency:'SAR'}}});await db.safetyChecklist.create({data:{tripId:t.id,decision:'ALLOWED',items:{},decidedAt:new Date()}});return t};
- const makeBooking=async(trip,account,status='PENDING',seats=1)=>{const row=await db.booking.create({data:{tripId:trip.id,accountId:account.id,status,seats}});bookingIds.push(row.id);for(let n=0;n<seats;n++)await db.bookingParticipant.create({data:{bookingId:row.id,fullName:'مشارك حجز '+n,eligibilityStatus:'ELIGIBLE',identitySnapshot:{private:'SECRET_IDENTITY'},emergencySnapshot:{private:'SECRET_EMERGENCY'}}});return row};
+ const makeBooking=async(trip,account,status='PENDING',seats=1,adoptParticipation=true)=>{const row=await db.booking.create({data:{tripId:trip.id,accountId:account.id,status,seats}});bookingIds.push(row.id);for(let n=0;n<seats;n++){const participant=await db.bookingParticipant.create({data:{bookingId:row.id,fullName:'مشارك حجز '+n,eligibilityStatus:'PENDING',identitySnapshot:{private:'SECRET_IDENTITY'},emergencySnapshot:{private:'SECRET_EMERGENCY'}}});if(adoptParticipation)await participation.prepare('BOOKING_PARTICIPANT',participant.id,{review:true});}return db.booking.findUniqueOrThrow({where:{id:row.id}})};
  const pay=booking=>db.payment.create({data:{bookingId:booking.id,accountId:booking.accountId,status:'CAPTURED',amountMinor:booking.seats*1000,currency:'SAR',idempotencyKey:randomUUID(),providerReference:randomUUID()}});
  try{
   await db.operationalSetting.upsert({where:{key:'WEATHER_GATE'},create:{key:'WEATHER_GATE',value:{enabled:false}},update:{value:{enabled:false}}});
@@ -46,9 +48,16 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   await db.payment.update({where:{id:payment.id},data:{status:'REFUNDED'}});check((await apply(booking.id,c)).status===409,'Changed payment invalidates saved preview');p=await preview(booking.id);check(p.blockers.includes('PAYMENT_REQUIRED'),'Refunded payment does not satisfy payment gate');await db.payment.update({where:{id:payment.id},data:{status:'CAPTURED'}});
   const participant=await db.bookingParticipant.findFirst({where:{bookingId:booking.id}});p=await preview(booking.id);c=command(p);await db.bookingParticipant.update({where:{id:participant.id},data:{eligibilityStatus:'PENDING'}});check((await apply(booking.id,c)).status===409,'Participant changes invalidate confirmation preview');p=await preview(booking.id);check(p.blockers.includes('PARTICIPANT_ELIGIBILITY_PENDING'),'Unreviewed participants block confirmation');
   await db.$executeRaw`INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","state","createdAt","updatedAt") VALUES(${randomUUID()},'BOOKING','PARTICIPANT_ELIGIBILITY','CI participant','REVIEW',NOW(),NOW()) ON CONFLICT("category","ruleKey") DO UPDATE SET "state"='REVIEW',"updatedAt"=NOW()`;
-  p=await preview(booking.id);check(p.actions.includes('CONFIRM')&&p.policyReview.required,'Review policy exposes explicit review issues');check((await apply(booking.id,command(p))).status===409,'Review issues need acknowledgment');
+  p=await preview(booking.id);check(!p.actions.includes('CONFIRM')&&p.blockers.includes('PARTICIPATION_NATIVE_REVIEW_REQUIRED'),'Review preference cannot bypass the adopted source-bound participant decision');
+  check((await apply(booking.id,command(p,'CONFIRM',{policyReviewAcknowledged:true}))).status===409,'Acknowledgment cannot revive incomplete adopted participation evidence');
+  // Keep the pre-adoption preference contract distinct from an adopted D01
+  // source. This extra fixture stays outside the directory-count scenario.
+  const reviewTrip=await makeTrip();await db.trip.update({where:{id:reviewTrip.id},data:{title:'ParticipantReviewPolicyCI-'+randomUUID()}});
+  const reviewBooking=await makeBooking(reviewTrip,customer,'PENDING',1,false);await pay(reviewBooking);
+  check(await db.participationCase.count({where:{bookingParticipant:{bookingId:reviewBooking.id}}})===0,'Legacy review fixture has no adopted source to weaken');
+  p=await preview(reviewBooking.id);check(p.actions.includes('CONFIRM')&&p.policyReview.required,'Review policy exposes explicit review issues');check((await apply(reviewBooking.id,command(p))).status===409,'Review issues need acknowledgment');
   await db.$executeRaw`UPDATE "PolicyControl" SET "state"='ENABLED',"updatedAt"=NOW() WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
-  check((await apply(booking.id,command(p,'CONFIRM',{policyReviewAcknowledged:true}))).status===409,'Changed policy cannot reuse a looser preview');await db.bookingParticipant.update({where:{id:participant.id},data:{eligibilityStatus:'ELIGIBLE'}});
+  check((await apply(reviewBooking.id,command(p,'CONFIRM',{policyReviewAcknowledged:true}))).status===409,'Changed policy cannot reuse a looser preview');await db.bookingParticipant.update({where:{id:participant.id},data:{eligibilityStatus:'ELIGIBLE'}});
   for(const state of ['ENABLED','REVIEW','DISABLED']){
    await db.$executeRaw`INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","state","createdAt","updatedAt") VALUES(${randomUUID()},'BOOKING','SAFETY_APPROVAL','CI safety approval',${state},NOW(),NOW()) ON CONFLICT("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedAt"=NOW()`;
    for(const decision of [null,'REVIEW_REQUIRED','ALLOWED','DEFERRED']){
@@ -142,6 +151,7 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   if(weatherBefore)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:weatherBefore.value}});else await db.operationalSetting.deleteMany({where:{key:'WEATHER_GATE'}});
   if(policyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${policyBefore[0].state},"updatedAt"=${policyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
   if(safetyPolicyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${safetyPolicyBefore[0].state},"updatedAt"=${safetyPolicyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
+  await participation.cleanup();
   await db.invoice.deleteMany({where:{payment:{bookingId:{in:bookingIds}}}});await db.payment.deleteMany({where:{bookingId:{in:bookingIds}}});await db.bookingParticipant.deleteMany({where:{bookingId:{in:bookingIds}}});await db.booking.deleteMany({where:{id:{in:bookingIds}}});await db.crewAssignment.deleteMany({where:{tripId:{in:trips}}});await db.calendarAllocation.deleteMany({where:{eventId:{in:events}}});await db.calendarEvent.deleteMany({where:{id:{in:events}}});await db.calendarResource.deleteMany({where:{id:{in:resources}}});await db.safetyChecklist.deleteMany({where:{tripId:{in:trips}}});await db.operationalSetting.deleteMany({where:{key:{in:trips.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:trips}}});
  }
 }

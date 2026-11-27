@@ -3,8 +3,11 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { CalendarAllocationService } from './calendar-allocation.service';
+import { applyParticipationPolicy, evaluateParticipation } from '../participation/participation-evaluator';
+import { PolicyControlService } from './policy-control.service';
 
 type ClearanceEvent = { id:string; action:string; occurredAt:Date };
+type ClearanceState = { status:'MISSING'|'REVOKED'|'STALE'|'ACTIVE'; event:ClearanceEvent|null; changedAt:Date|null };
 type ChangeRow = { changedAt: Date | null };
 type ReadinessLike={status:'READY'|'REVIEW_REQUIRED'|'NOT_READY';checks:{safety:boolean;compliance:boolean;[key:string]:boolean};blockers:string[];policyReview?:{issues:string[]}};
 
@@ -64,12 +67,21 @@ export class OperationalClearanceService {
     });
   }
 
-  async currentStatus(tripId:string,tx:Prisma.TransactionClient=this.db){
+  private async inspectCurrent(tripId:string,tx:Prisma.TransactionClient):Promise<ClearanceState>{
     const latest=await this.latestEvent(tripId,tx);
-    if(!latest)return {status:'MISSING',eventId:null};
-    if(latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {status:'REVOKED',eventId:latest.id};
+    if(!latest)return {status:'MISSING',event:null,changedAt:null};
+    if(latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {status:'REVOKED',event:latest,changedAt:null};
     const changedAt=await this.latestOperationalChange(tripId,tx);
-    return {status:changedAt&&changedAt>latest.occurredAt?'STALE':'ACTIVE',eventId:latest.id};
+    if(changedAt&&changedAt>latest.occurredAt)return {status:'STALE',event:latest,changedAt};
+    const participants=await tx.bookingParticipant.findMany({where:{booking:{tripId,status:'CONFIRMED'}},select:{id:true},orderBy:{id:'asc'}});
+    const policy=await new PolicyControlService(tx as DatabaseService,this.audit).decision('BOOKING','PARTICIPANT_ELIGIBILITY',tx);
+    const participation=applyParticipationPolicy(await Promise.all(participants.map(async row=>(await evaluateParticipation(tx,'BOOKING_PARTICIPANT',row.id)).readiness)),policy);
+    return {status:participation.ready?'ACTIVE':'STALE',event:latest,changedAt};
+  }
+
+  async currentStatus(tripId:string,tx:Prisma.TransactionClient=this.db){
+    const current=await this.inspectCurrent(tripId,tx);
+    return {status:current.status,eventId:current.event?.id??null};
   }
 
   async assertCurrent(tripId:string,eventId:string,tx:Prisma.TransactionClient){
@@ -81,9 +93,24 @@ export class OperationalClearanceService {
     if(readiness.status==='REVIEW_REQUIRED'&&latest?.action!=='OPERATIONAL_REVIEW_APPROVED')throw new ConflictException('Current readiness requires documented administrative review approval.');
   }
 
-  async revokeIfStale(tripId:string){const latest=await this.latestEvent(tripId);if(!latest||latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {revoked:false,reason:'NO_ACTIVE_CLEARANCE'};const changedAt=await this.latestOperationalChange(tripId);if(!changedAt||changedAt<=latest.occurredAt)return {revoked:false,reason:'CURRENT'};const event=await this.audit.record({action:'OPERATIONAL_CLEARANCE_REVOKED',resource:'Trip',resourceId:tripId,metadata:{previousClearanceEventId:latest.id,reason:'OPERATIONAL_STATE_CHANGED',changedAt}});return {revoked:true,auditEventId:event.id,previousClearanceEventId:latest.id,changedAt};}
+  async revokeIfStale(tripId:string){
+    return this.db.serializable(async tx=>{
+      const current=await this.inspectCurrent(tripId,tx);
+      if(!current.event||current.status==='REVOKED')return {revoked:false,reason:'NO_ACTIVE_CLEARANCE'};
+      if(current.status==='ACTIVE')return {revoked:false,reason:'CURRENT'};
+      const event=await this.audit.record({action:'OPERATIONAL_CLEARANCE_REVOKED',resource:'Trip',resourceId:tripId,metadata:{previousClearanceEventId:current.event.id,reason:'OPERATIONAL_STATE_CHANGED',changedAt:current.changedAt}},tx);
+      return {revoked:true,auditEventId:event.id,previousClearanceEventId:current.event.id,changedAt:current.changedAt};
+    });
+  }
 
-  async status(tripId:string){await this.revokeIfStale(tripId);const latest=await this.latestEvent(tripId);if(!latest)return {status:'MISSING' as const,event:null};if(latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {status:'REVOKED' as const,event:latest};return {status:'ACTIVE' as const,event:latest,reviewRequired:latest.action==='OPERATIONAL_REVIEW_APPROVED'};}
+  async status(tripId:string){
+    // Reading the trip list must not manufacture a revocation event. The scan
+    // records stale grants separately, using this same current-source reader.
+    return this.db.serializable(async tx=>{
+      const current=await this.inspectCurrent(tripId,tx);
+      return {status:current.status,event:current.event,...(current.status==='ACTIVE'?{reviewRequired:current.event?.action==='OPERATIONAL_REVIEW_APPROVED'}:{})};
+    });
+  }
 
   async assertReadinessWithoutClearance(tripId:string){
     const changedAt=await this.latestOperationalChange(tripId);

@@ -7,6 +7,7 @@ import { decisionDigest, scopeId } from './owner-administrative-decision.domain'
 import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
 import { templateObject } from './document-template-input';
 import { validateDocumentPayload } from './document-payload';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 export const INTERNAL_REVIEW_POLICY = 'EXPLICIT_DOCUMENT_REVIEW_V1';
 export const INTERNAL_REVIEW_PREFIX = 'INTERNAL_DOCUMENT_REVIEW:v1:';
@@ -93,6 +94,7 @@ export function documentReadHash(d: any): string {
 export async function reviewSource(tx: Prisma.TransactionClient, org: string, id: string) {
   const d = await tx.managedDocument.findFirst({where:{id,organizationId:org},include:{template:true,createdBy:{select:{personId:true}},approvedBy:{select:{personId:true}}}});
   if (!d || d.template.organizationId !== org || d.template.department !== d.department || d.template.code === COOPERATION_CODE || isLibraryCode(d.template.code)) throw new ForbiddenException('المستند غير متاح في مسار المراجعة الداخلية.');
+  assertNotParticipationSource(d.template.code);
   const revision = await tx.documentRevision.findUnique({where:{documentId_version:{documentId:id,version:d.version}}});
   if (!revision || revision.contentHash !== d.contentHash || decisionDigest(revision.payload) !== decisionDigest(d.payload) || !d.documentBrandVersion) throw new ConflictException('أدلة إصدار المستند غير متسقة.');
   const branding = await tx.documentBrandSnapshot.findUnique({where:{organizationId_brandVersion:{organizationId:org,brandVersion:d.documentBrandVersion}}});

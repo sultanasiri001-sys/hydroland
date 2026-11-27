@@ -8,6 +8,7 @@ import { isLibraryCode } from './contract-library.domain';
 import { renderAdministrativeDocumentPdf } from './administrative-document-pdf';
 import { assertCompatibleTemplateFields, isCustomTemplateCode, templateFields, templateText } from './document-template-input';
 import type { DocumentPrintContract } from './document-print.service';
+import { assertNotParticipationSource } from '../participation/participation-privacy';
 
 type Actor={auth:{accountId:string}};
 @UseGuards(AccessTokenGuard)
@@ -36,6 +37,7 @@ export class DocumentTemplatePreviewController {
    if(Object.keys(b).length)await this.authz.assert(r.auth.accountId,org,'TEMPLATE_UPDATE',tx);
    const t=await tx.documentTemplate.findFirst({where:{id,organizationId:org,status:'ACTIVE'}});
    if(!t||t.code===COOPERATION_CODE||isLibraryCode(t.code))throw new NotFoundException('Active administrative template not found.');
+   assertNotParticipationSource(t.code);
    const fields=templateFields(b.fields??t.fields);if(!isCustomTemplateCode(t.code))assertCompatibleTemplateFields(t.fields,fields);
    const identity=await tx.organization.findUnique({where:{id:org}});
    if(!identity)throw new NotFoundException('Organization not found.');

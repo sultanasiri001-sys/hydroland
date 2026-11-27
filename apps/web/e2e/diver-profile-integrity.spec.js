@@ -103,3 +103,26 @@ test('emergency contact validation preserves input and pending saves cannot dupl
   await expect(editor.locator('[type="submit"]')).toBeEnabled();
   await expect(editor.locator('[name="emergencyPhone"]')).toHaveValue('0555555555');
 });
+
+for (const locale of ['ar', 'en']) test(`a self-declared FIT status and a future date never become medical clearance (${locale})`, async ({page}) => {
+  const state = await install(page, {profile:{...initialProfile,medicalClearanceExpiresAt:'2099-12-31T00:00:00.000Z'}});
+  await page.evaluate(value => window.HydrolandI18n.setLocale(value), locale);
+  const dashboard = page.locator('#hl-diver-dashboard');
+  const health = dashboard.locator('.hl-diver-ready-row').filter({hasText:locale === 'ar' ? 'الإقرار الصحي الذاتي' : 'Self-reported health'});
+  await expect(health).toContainText(locale === 'ar' ? 'يتطلب إجراءً' : 'Action required');
+  await expect(health).toContainText(locale === 'ar' ? 'إقرار ذاتي باللياقة' : 'Self-reported fitness');
+  await expect(health.locator('.hl-readiness-ok')).toHaveCount(0);
+  await expect(dashboard).not.toContainText(/الفحص الطبي صالح|Medical assessment is valid/);
+  const editor = await open(page);
+  await expect(editor.locator('#hl-diver-self-declaration')).toContainText(locale === 'ar' ? 'لا يمنح تصريحًا طبيًا أو أهلية للمشاركة' : 'does not grant medical clearance or participation eligibility');
+  await expect(editor.getByLabel(locale === 'ar' ? 'الحالة الصحية المصرّح بها ذاتيًا' : 'Self-reported health status')).toHaveValue('FIT');
+  await editor.getByLabel(locale === 'ar' ? 'تاريخ الانتهاء المُدخل ذاتيًا' : 'Self-reported expiry date').fill('2000-01-01');
+  await editor.locator('[type="submit"]').click();
+  await expect(editor).not.toBeVisible();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].medicalFitnessStatus).toBe('FIT');
+  expect(state.writes[0].medicalClearanceExpiresAt).toBe('2000-01-01');
+  await expect(health).toContainText(locale === 'ar' ? 'يتطلب إجراءً' : 'Action required');
+  await expect(health.locator('.hl-readiness-ok')).toHaveCount(0);
+  await expect(dashboard).not.toContainText(/الفحص الطبي صالح|Medical assessment is valid/);
+});

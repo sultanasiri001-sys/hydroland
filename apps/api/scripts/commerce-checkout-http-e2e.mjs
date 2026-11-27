@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID, scryptSync, createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { PrismaClient } from '@prisma/client';
+import { participationFixture } from './participation-isolated-fixture.mjs';
 
 const base = process.env.COMMERCE_CHECKOUT_E2E_BASE_URL;
 const providerBase = process.env.MOYASAR_API_BASE_URL;
@@ -38,6 +39,10 @@ globalThis.fetch = (input, options) => {
   return nativeFetch(input, { redirect: 'error', ...options, signal: AbortSignal.timeout(15_000) });
 };
 const db = new PrismaClient();
+const participation = participationFixture(db, base);
+const approveParticipants = async bookingId => {
+  for (const row of await db.bookingParticipant.findMany({ where: { bookingId } })) await participation.prepare('BOOKING_PARTICIPANT', row.id);
+};
 const suffix = randomUUID();
 const password = randomBytes(24).toString('hex');
 const salt = randomBytes(16).toString('hex');
@@ -327,7 +332,7 @@ try {
   });
 
   await check('fully refunded provider state invalidates the reviewed confirmation and blocks admin and center routes', async () => {
-    await db.bookingParticipant.updateMany({ where: { bookingId: booking.id }, data: { eligibilityStatus: 'ELIGIBLE' } });
+    await approveParticipants(booking.id);
     confirmationPreview = await centerPreview(booking);
     assert.equal(confirmationPreview.requiredAmountMinor, 24_690);
     assert.equal(confirmationPreview.paymentContractReview.source, 'SNAPSHOT');
@@ -374,7 +379,7 @@ try {
     assert.equal((await currentBooking(booked)).status, 'PENDING');
     // Simulate an already recorded partial refund from the independent financial
     // execution suite. This fixture mutation is not represented as a provider POST.
-    await db.bookingParticipant.updateMany({ where: { bookingId: booked.id }, data: { eligibilityStatus: 'ELIGIBLE' } });
+    await approveParticipants(booked.id);
     const before = await centerPreview(booked);
     assert.equal(before.paymentSatisfied, true);
     await db.payment.update({ where: { id: created.id }, data: { refundedAmountMinor: 1_000 } });
@@ -395,7 +400,7 @@ try {
     const draft = await db.invoice.findUniqueOrThrow({ where: { paymentId: created.id } });
     assert.deepEqual(draft.contractSnapshot, (await currentPayment(created)).contractSnapshot);
     await db.operationalSetting.update({ where: { key: 'trip-price:' + row.id }, data: { value: { pricePerSeatMinor: 100_000, currency: 'SAR' } } });
-    await db.bookingParticipant.updateMany({ where: { bookingId: booked.id }, data: { eligibilityStatus: 'ELIGIBLE' } });
+    await approveParticipants(booked.id);
     const preview = await centerPreview(booked);
     assert.equal(preview.requiredAmountMinor, 6_000);
     assert.equal(preview.paymentSatisfied, true);

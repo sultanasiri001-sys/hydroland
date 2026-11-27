@@ -2,6 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable 
 import { DatabaseService } from '../database/database.service';
 import type { Prisma } from '@prisma/client';
 import { DocumentPersistenceService } from '../document-forms/document-persistence.service';
+import { assertNotParticipationSource, genericDocumentTemplateWhere } from '../participation/participation-privacy';
+
+const genericRecordWhere: Prisma.AdministrativeRecordWhereInput = {
+  OR: [{ managedDocumentId: null }, { managedDocument: { template: genericDocumentTemplateWhere } }],
+};
 
 @Injectable()
 export class AdministrativeAffairsPersistenceService {
@@ -9,7 +14,8 @@ export class AdministrativeAffairsPersistenceService {
 
   private async lockRegisteredRecord(tx:Prisma.TransactionClient,recordId:string) {
     await tx.$queryRaw`SELECT "id" FROM "AdministrativeRecord" WHERE "id"::text=${recordId} FOR UPDATE`;
-    const record=await tx.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{status:true}});
+    const record=await tx.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{status:true,managedDocument:{select:{template:{select:{code:true}}}}}});
+    if(record.managedDocument)assertNotParticipationSource(record.managedDocument.template.code);
     if(record.status==='ARCHIVED')throw new ConflictException('ADMIN_RECORD_ARCHIVED');
     if(record.status!=='REGISTERED')throw new ConflictException('ADMIN_RECORD_NOT_REGISTERED');
   }
@@ -56,6 +62,7 @@ export class AdministrativeAffairsPersistenceService {
     if(unit.organizationId!==input.organizationId||!unit.active)throw new ForbiddenException('ADMIN_RECORD_UNIT_SCOPE_DENIED');
     const source=await this.db.managedDocument.findFirst({where:{id:input.managedDocumentId,organizationId:input.organizationId},include:{template:true}});
     if(!source)throw new ForbiddenException('ADMIN_DOCUMENT_ORGANIZATION_SCOPE_DENIED');
+    assertNotParticipationSource(source.template.code);
     if(source.template.department!=='ADMIN_AFFAIRS_RECORDS')throw new BadRequestException('ADMIN_DOCUMENT_TEMPLATE_REQUIRED');
     if(source.status!=='SIGNED')throw new ConflictException('ADMIN_DOCUMENT_MUST_BE_SIGNED');
     const sourcePayload=source.payload&&typeof source.payload==='object'&&!Array.isArray(source.payload)?source.payload as Record<string,unknown>:{};
@@ -69,6 +76,7 @@ export class AdministrativeAffairsPersistenceService {
       await tx.$queryRaw`SELECT "id" FROM "ManagedDocument" WHERE "id"::text=${input.managedDocumentId} FOR UPDATE`;
       const document=await tx.managedDocument.findFirst({where:{id:input.managedDocumentId,organizationId:input.organizationId},include:{template:true}});
       if(!document||document.template.department!=='ADMIN_AFFAIRS_RECORDS')throw new ForbiddenException('ADMIN_DOCUMENT_ORGANIZATION_SCOPE_DENIED');
+      assertNotParticipationSource(document.template.code);
       if(document.status!=='SIGNED'||document.version!==source.version||document.contentHash!==source.contentHash)throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_CHANGED');
       const revision=await tx.documentRevision.findUnique({where:{documentId_version:{documentId:document.id,version:document.version}}});
       if(!revision||revision.contentHash!==document.contentHash)throw new ConflictException('ADMIN_DOCUMENT_REVISION_MISSING');
@@ -101,7 +109,7 @@ export class AdministrativeAffairsPersistenceService {
     if(filters.status&&!allowedStatuses.includes(filters.status))throw new BadRequestException('ADMIN_RECORD_STATUS_INVALID');
     const scope=await this.readUnitScope(accountId,organizationId);
     await this.assertPermission(accountId,organizationId,'READ',scope??[]);
-    const where:any={organizationId,...(filters.status?{status:filters.status}:{}),...(scope?{unitId:{in:scope}}:{}),...(q?{OR:[
+    const where:any={organizationId,AND:[genericRecordWhere],...(filters.status?{status:filters.status}:{}),...(scope?{unitId:{in:scope}}:{}),...(q?{OR:[
       {referenceNumber:{contains:q,mode:'insensitive'}},{subject:{contains:q,mode:'insensitive'}},{type:{contains:q,mode:'insensitive'}},
     ]}:{})};
     return this.db.administrativeRecord.findMany({where,orderBy:[{updatedAt:'desc'},{createdAt:'desc'}],take:100,include:{
@@ -111,12 +119,13 @@ export class AdministrativeAffairsPersistenceService {
   }
 
   async getRecord(accountId:string,recordId:string){
-    const record=await this.db.administrativeRecord.findUnique({where:{id:recordId},select:{id:true,organizationId:true,unitId:true}});
+    const record=await this.db.administrativeRecord.findUnique({where:{id:recordId},select:{id:true,organizationId:true,unitId:true,managedDocument:{select:{template:{select:{code:true}}}}}});
     if(!record)throw new BadRequestException('ADMIN_RECORD_NOT_FOUND');
     const scope=await this.readUnitScope(accountId,record.organizationId);
     await this.assertPermission(accountId,record.organizationId,'READ',[record.unitId],this.db);
     if(scope&&!scope.includes(record.unitId))throw new ForbiddenException('ADMIN_UNIT_SCOPE_DENIED');
-    const detail=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:record.id},include:{
+    if(record.managedDocument)assertNotParticipationSource(record.managedDocument.template.code);
+    const detail=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:record.id,AND:[genericRecordWhere]},include:{
       managedDocument:{include:{template:true,revisions:{orderBy:{version:'asc'}}}},
       routings:{orderBy:{createdAt:'desc'}},
     }});
@@ -154,7 +163,7 @@ export class AdministrativeAffairsPersistenceService {
     const record=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{id:true,organizationId:true,unitId:true,status:true}});
     await this.assertPermission(actorAccountId,record.organizationId,'REGISTER',[record.unitId]);
     const result=await this.db.$transaction(async tx=>{
-      const updated=await tx.administrativeRecord.updateMany({where:{id:record.id,status:'DRAFT',...expectedLicense},data:{status:'REGISTERED'}});
+      const updated=await tx.administrativeRecord.updateMany({where:{id:record.id,status:'DRAFT',AND:[genericRecordWhere],...expectedLicense},data:{status:'REGISTERED'}});
       if(updated.count!==1) throw new ConflictException('ADMIN_RECORD_CONCURRENT_MODIFICATION');
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
       await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_RECORD_REGISTERED',resource:'AdministrativeRecord',resourceId:record.id,metadata:{organizationId:record.organizationId}}});

@@ -26,6 +26,9 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
   const read = line => call(accountant, path(line)).then(ok);
   const refs = {GOODS: 'CENTER_STORE_ENTITLEMENT', TRIP: 'CENTER_SERVICE_ENTITLEMENT', COURSE: 'CENTER_COURSE_ENTITLEMENT', RENTAL: 'CENTER_RENTAL_ENTITLEMENT'};
   const byKind = Object.fromEntries(order.lines.map(line => [line.kind, line]));
+  // Consent precedes the original course start. Preparation does not execute or
+  // complete that service, and financial entitlement assertions below are unchanged.
+  const coursePrerequisites = await execution.prepareCourse(f, byKind.COURSE);
   const originalHashes = Object.fromEntries(order.lines.map(line => [line.id, line.contractHash]));
   const financeSnapshot = async () => ({entries: await db.financeEntry.count(), approvals: await db.financeApproval.count(),
     invoices: await db.commerceInvoiceFinalization.count(), transfers: await db.commerceSourceTransferReceipt.count(),
@@ -78,7 +81,7 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
   await check('all source completion evidence comes from original operational commands', async () => {
     await execution.completeRental(f, byKind.RENTAL, main);
     await execution.completeTrip(f, byKind.TRIP, main);
-    await execution.completeCourse(f, byKind.COURSE);
+    await execution.completeCourse(f, byKind.COURSE, coursePrerequisites);
     for (const line of order.lines) {
       const state = await read(line); assert.equal(state.grossReadiness, 'ELIGIBLE', JSON.stringify(state));
       assert.equal(state.eligibleGrossAmountMinor, line.amountMinor); assert.equal(state.collectionVerified, true);

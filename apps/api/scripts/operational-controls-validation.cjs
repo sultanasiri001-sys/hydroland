@@ -55,10 +55,15 @@ function harness(){
  const db={$queryRaw:async()=>[{ruleKey:'CAPACITY_LIMIT',state:capacityState}],account:{findFirst:async()=>({id:'student'})},storeCourseOffer:{findFirst:async()=>({id:'course',organizationId:'center',organization:{id:'center',displayName:'Synthetic center'},title:'Synthetic course',priceMinor:10000,currency:'SAR',capacity:1,courseCode:'TEST',startsAt:now,endsAt:new Date(now.getTime()+3600000)})},trainingEnrollment:{findFirst:async()=>null,count:async()=>1,create:async({data})=>{enrollments++;return{id:'enrollment',...data}}},auditEvent:{create:async()=>({})}};db.serializable=fn=>fn(db);
  const offers=new StoreOfferingsService(db);await assert.rejects(()=>offers.enroll('student','course'),/اكتملت/);capacityState='DISABLED';const enrolled=await offers.enroll('student','course');assert.equal(enrollments,1);assert.equal(enrolled.metadata.financialActionExecuted,false);assert.equal(enrolled.metadata.operationalPolicy.capacityLimit,false);
  for(const enabled of [false,true])for(const mode of ['ADVISORY','ENFORCE']){
-  const calendarDb={trip:{findMany:async()=>[{id:'trip',type:'SHORE_DIVE',startsAt:now,endsAt:new Date('2030-01-02'),capacity:1,bookings:[],safetyChecklists:[{decision:'DEFERRED',items:{weather:{decision:'DEFERRED'}}}]}]},$queryRaw:async()=>[]};
+  let participantReads=0;
+  const calendarDb={trip:{findMany:async()=>[{id:'trip',type:'SHORE_DIVE',startsAt:now,endsAt:new Date('2030-01-02'),capacity:1,bookings:[],safetyChecklists:[{decision:'DEFERRED',items:{weather:{decision:'DEFERRED'}}}]}]},bookingParticipant:{findMany:async query=>{
+   assert.deepEqual(query,{where:{booking:{tripId:'trip',status:'CONFIRMED'}},select:{id:true},orderBy:{id:'asc'}});
+   participantReads++;return []; // This weather fixture has no bookings or confirmed participants.
+  }},$queryRaw:async()=>[]};
   const policy={decision:async(category)=>({state:category==='WEATHER'?'ENABLED':'DISABLED',enforce:category==='WEATHER',review:false,bypass:category!=='WEATHER'})};
   const calendar=new CalendarAllocationService(calendarDb,{}, {settings:async()=>({enabled,mode}),evaluateReview:()=>({decision:'DEFERRED'})},policy,{}, {evaluate:async()=>({blocked:false,reviewRequired:false,states:{}})}, {get:async()=>({record:null,policyReview:{required:false,blocked:false,states:{}}})},{},{latest:async()=>null});
   const [trip]=await calendar.calendar('2030-01-01','2030-01-03');assert.equal(trip.readiness.checks.weather,!(enabled&&mode==='ENFORCE'));assert(trip.readiness.policyReview.issues.includes('SAFETY_DEFERRED'));
+  assert.equal(participantReads,1);assert.equal(trip.readiness.checks.participants,true);
  }
  assert(h.state().audits.every(a=>a.actorId==='admin'&&a.metadata.reason));
  console.log('Operational controls passed: read-only defaults, effective weather state, atomic audit rollback, stale revision, revoked admin, training timing/attendance/conflicts/capacity and truthful evidence.');
