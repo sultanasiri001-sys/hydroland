@@ -24,9 +24,13 @@ for attempt in {1..30}; do
 done
 test "$ready" = 1
 device=()
-if [ "$platform" = ios ]; then device=(--device "${HYDROLAND_SIMULATOR_ID:?An installed simulator is required}"); fi
+if [ "$platform" = ios ]; then
+  # Keep driver startup diagnostics, which precede the first per-flow log.
+  device=(--verbose --device "${HYDROLAND_SIMULATOR_ID:?An installed simulator is required}")
+fi
 maestro "${device[@]}" test --format junit --output "$artifact_dir/junit.xml" \
-  --test-output-dir "$artifact_dir/maestro" --debug-output "$artifact_dir/maestro" apps/mobile/.maestro
+  --test-output-dir "$artifact_dir/maestro" --debug-output "$artifact_dir/maestro" apps/mobile/.maestro \
+  2>&1 | tee "$artifact_dir/maestro-cli.txt"
 # Maestro 2.13 confines takeScreenshot to each flow's artifact bundle. Preserve
 # those bundles, then copy the exact required images for the acceptance receipt.
 node --input-type=module - "$artifact_dir" <<'JS'
