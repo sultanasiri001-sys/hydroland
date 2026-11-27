@@ -14,3 +14,17 @@
 .hl-training [data-certificate-recommend-form] fieldset{display:grid;gap:1rem;min-width:0;margin:.8rem 0;padding:.8rem;border:1px solid var(--hl-border,rgba(120,191,224,.3));border-radius:12px}
 .hl-training [data-certificate-recommend-form] label{display:flex;gap:.65rem;align-items:start}
 .hl-training [data-certificate-recommend-form] [type=checkbox]{flex:0 0 auto;min-width:20px;min-height:20px}
+
+.hl-training [data-certificate-record],.hl-certificate-boundary,.hl-certificate-readiness{min-width:0;overflow-wrap:anywhere}
+.hl-certificate-boundary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:.8rem;margin:1rem 0}
+.hl-certificate-boundary>section,.hl-certificate-readiness{border:1px solid var(--hl-border,rgba(120,191,224,.25));border-radius:12px;padding:.8rem}
+.hl-certificate-boundary h4,.hl-certificate-readiness h4{margin-top:0}
+.hl-training [data-certificate-lifecycle] fieldset{display:grid;gap:1rem;min-width:0;border:0;padding:.8rem 0}
+.hl-training [data-certificate-lifecycle] label{display:grid;gap:.5rem;min-width:0}
+.hl-training [data-certificate-lifecycle] textarea{box-sizing:border-box;width:100%;min-width:0;min-height:90px;padding:.7rem;border:1px solid var(--hl-border,rgba(120,191,224,.3));border-radius:10px;background:var(--hl-surface,#102b3b);color:inherit;font:inherit;resize:vertical}
+.hl-training [data-certificate-history],.hl-training [data-certificate-lifecycle]{margin-top:1rem}
+.hl-training [data-certificate-history] li{margin:.7rem 0}
+.hl-training [data-certificate-record] summary,.hl-training [data-certificate-record] button{min-height:44px}
+.hl-training fieldset:disabled button,.hl-training-certificate-review fieldset:disabled button{opacity:.6;cursor:not-allowed}
+
+.hl-training [data-certificate-record] .hl-course-top>div{display:grid;gap:.35rem;min-width:0}
