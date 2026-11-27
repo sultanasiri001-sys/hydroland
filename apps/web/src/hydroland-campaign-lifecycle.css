@@ -1,0 +1,19 @@
+.hl-campaign-lifecycle{margin-block:1rem;padding:1rem;border:1px solid #39657b;border-radius:1rem;min-width:0;background:#092b3d;color:#eaf6fc}
+.hl-campaign-lifecycle header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+.hl-campaign-lifecycle h4,.hl-campaign-lifecycle h5,.hl-campaign-lifecycle h6{margin-block:.4rem;font-size:1.05rem}
+.hl-campaign-lifecycle section,.hl-campaign-lifecycle form{margin-block:1rem;min-width:0}
+.hl-campaign-lifecycle fieldset{display:grid;gap:.7rem;min-width:0;padding:1rem;border:1px solid var(--line,#c7d7df);border-radius:.75rem}
+.hl-campaign-lifecycle label{display:grid;gap:.3rem;min-width:0}
+.hl-campaign-lifecycle label:has(input[type=checkbox]){display:flex;align-items:flex-start;gap:.6rem}
+.hl-campaign-lifecycle input,.hl-campaign-lifecycle textarea,.hl-campaign-lifecycle select,.hl-campaign-lifecycle button{color:#eaf6fc;background:#12394f;border:1px solid #52758a;font:inherit}
+.hl-campaign-lifecycle select option{color:#eaf6fc;background:#092b3d}
+.hl-campaign-lifecycle input:not([type=checkbox]),.hl-campaign-lifecycle textarea,.hl-campaign-lifecycle select{box-sizing:border-box;width:100%;max-width:100%;min-width:0}
+.hl-campaign-lifecycle textarea{min-height:5rem;resize:vertical}
+.hl-campaign-lifecycle button{max-width:100%;white-space:normal;margin-block:.2rem;margin-inline-end:.4rem}
+.hl-campaign-lifecycle article,.hl-campaign-lifecycle details{padding:.8rem;margin-block:.6rem;border:1px solid var(--line,#c7d7df);border-radius:.6rem;min-width:0}
+.hl-campaign-lifecycle dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.65rem;margin-block:.6rem}
+.hl-campaign-lifecycle dl>div{min-width:0;background:#12394f}.hl-campaign-lifecycle dt{font-weight:600;color:#c3d9e5}.hl-campaign-lifecycle dd{margin:0;white-space:pre-wrap;unicode-bidi:plaintext}
+.hl-campaign-lifecycle p,.hl-campaign-lifecycle dd,.hl-campaign-lifecycle li,.hl-campaign-lifecycle summary,.hl-campaign-lifecycle h6{overflow-wrap:anywhere}
+.hl-campaign-lifecycle .hl-campaign-notice{padding:.75rem;border-inline-start:4px solid #59d4e4;background:#12394f}
+.hl-campaign-lifecycle :focus-visible{outline:3px solid var(--accent,#168b8e);outline-offset:3px}
+@media(max-width:560px){.hl-campaign-lifecycle{padding:.65rem}.hl-campaign-lifecycle fieldset{padding:.65rem}.hl-campaign-lifecycle dl{grid-template-columns:1fr}.hl-campaign-lifecycle input[type=datetime-local]{font-size:.95rem}}

@@ -248,6 +248,7 @@ model Account {
   internalResearchInitiatives InternalResearchInitiative[] @relation("InternalResearchCreator")
   marketingCampaignDrafts MarketingCampaignDraft[] @relation("MarketingDraftCreator")
   marketingCampaignDraftRevisions MarketingCampaignDraftRevision[] @relation("MarketingDraftRevisionActor")
+  marketingCampaignLifecycleEvents MarketingCampaignLifecycleEvent[]
   warehouseLocations WarehouseLocation[] @relation("WarehouseLocationCreator")
   warehouseLocationRevisions WarehouseLocationRevision[] @relation("WarehouseLocationRevisionActor")
   internalResearchRevisions InternalResearchRevision[] @relation("InternalResearchRevisionActor")
@@ -326,6 +327,7 @@ model Account {
 }
 
 model Organization {
+  marketingCampaignLifecycles MarketingCampaignLifecycle[]
   participationCases ParticipationCase[]
   retailStockCounts StoreStockCount[]
   stockLocations StoreStockLocation[]
@@ -1688,6 +1690,7 @@ enum FinanceEntryStatus {
 }
 
 model FinanceAccount {
+  marketingCampaignBudgets MarketingCampaignLifecycle[]
   id String @id @default(uuid())
   organizationId String
   name String
@@ -2920,6 +2923,8 @@ model DocumentTemplate {
 }
 
 model ManagedDocument {
+  marketingCampaignRights MarketingCampaignLifecycle[] @relation("CampaignRightsSource")
+  marketingCampaignBudgets MarketingCampaignLifecycle[] @relation("CampaignBudgetSource")
   participationPolicyCases ParticipationCase[] @relation("ParticipationPolicySource")
   participationIdentityCases ParticipationCase[] @relation("ParticipationIdentitySource")
   participationGuardianCases ParticipationCase[] @relation("ParticipationGuardianSource")
@@ -3124,6 +3129,7 @@ model InternalResearchReview {
 
 // Internal campaign planning only. No publication, delivery or approval authority.
 model MarketingCampaignDraft {
+  lifecycle MarketingCampaignLifecycle?
   id String @id @default(uuid())
   organizationId String
   requestKey String
@@ -3157,6 +3163,71 @@ model MarketingCampaignDraftRevision {
   campaignDraft MarketingCampaignDraft @relation(fields:[campaignDraftId],references:[id],onDelete:Restrict)
   actor Account @relation("MarketingDraftRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
   @@unique([campaignDraftId,revision])
+}
+
+// Independent operational preparation state. The pre-existing planning draft
+// and all MarketingCampaignDraftRevision snapshots keep their original digest.
+model MarketingCampaignLifecycle {
+  id String @id @default(uuid())
+  organizationId String
+  campaignDraftId String @unique
+  revision Int
+  status String
+  boundDraftRevision Int
+  boundDraftDigest String
+  rightsDocumentId String
+  rightsVersion Int
+  rightsHash String
+  rightsSnapshot Json
+  budgetDocumentId String
+  budgetVersion Int
+  budgetHash String
+  budgetSnapshot Json
+  financeAccountId String
+  budgetAmountMinor Int
+  budgetTaxMinor Int
+  budgetCurrency String
+  budgetTaxBasis String
+  validFrom DateTime
+  validUntil DateTime
+  recommendation String
+  ownerBinding Json
+  decision Json
+  evidenceBindings Json
+  recordDigest String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  campaignDraft MarketingCampaignDraft @relation(fields:[campaignDraftId],references:[id],onDelete:Restrict)
+  rightsDocument ManagedDocument @relation("CampaignRightsSource",fields:[rightsDocumentId],references:[id],onDelete:Restrict)
+  budgetDocument ManagedDocument @relation("CampaignBudgetSource",fields:[budgetDocumentId],references:[id],onDelete:Restrict)
+  financeAccount FinanceAccount @relation(fields:[financeAccountId],references:[id],onDelete:Restrict)
+  events MarketingCampaignLifecycleEvent[]
+  @@unique([organizationId,id])
+  @@index([organizationId,status,updatedAt])
+}
+
+model MarketingCampaignLifecycleEvent {
+  id String @id @default(uuid())
+  organizationId String
+  lifecycleId String
+  campaignDraftId String
+  requestId String
+  requestFingerprint String
+  actorAccountId String
+  actorPersonId String
+  action String
+  afterRevision Int
+  reason String
+  previousDigest String?
+  snapshot Json
+  eventDigest String
+  createdAt DateTime @default(now())
+  lifecycle MarketingCampaignLifecycle @relation(fields:[organizationId,lifecycleId],references:[organizationId,id],onDelete:Restrict)
+  actor Account @relation(fields:[actorAccountId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,requestId])
+  @@unique([lifecycleId,afterRevision])
+  @@index([organizationId,campaignDraftId,createdAt],map:"CampaignLifecycleEvent_org_campaign_created_idx")
 }
 
 // Owner-recorded evidence of past events; no operational execution authority.
