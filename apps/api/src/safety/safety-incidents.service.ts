@@ -1,11 +1,12 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
+import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
+import { evidenceDigest, evidenceId } from '../trips/trip-return.domain';
+import { closureEvidence, incidentClosureContext, incidentDecision, incidentPack } from './safety-incident-closure';
 
 type IncidentSeverity='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
-type IncidentStatus='OPEN'|'UNDER_REVIEW'|'RESOLVED'|'CLOSED';
 const severities:IncidentSeverity[]=['LOW','MEDIUM','HIGH','CRITICAL'];
-const statuses:IncidentStatus[]=['OPEN','UNDER_REVIEW','RESOLVED','CLOSED'];
 
 @Injectable()
 export class SafetyIncidentsService{
@@ -56,15 +57,23 @@ export class SafetyIncidentsService{
  adminQueue(){
   return this.db.safetyIncident.findMany({include:{trip:{select:{id:true,title:true,status:true}},reportedBy:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},resolvedBy:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}},orderBy:[{status:'asc'},{createdAt:'desc'}],take:200});
  }
- async decide(adminAccountId:string,incidentId:string,input:{status:IncidentStatus;resolutionNotes?:string}){
-  if(!statuses.includes(input.status)||input.status==='OPEN')throw new BadRequestException('Invalid incident status decision.');
-  const incident=await this.db.safetyIncident.findUnique({where:{id:incidentId}});
-  if(!incident)throw new NotFoundException('Safety incident not found.');
-  const terminal=input.status==='RESOLVED'||input.status==='CLOSED';
-  const notes=this.optional(input.resolutionNotes,5000);
-  if(terminal&&!notes)throw new BadRequestException('Resolution notes are required to resolve or close an incident.');
-  const updated=await this.db.safetyIncident.update({where:{id:incidentId},data:{status:input.status,resolutionNotes:notes??incident.resolutionNotes,resolvedByAccountId:terminal?adminAccountId:null,resolvedAt:terminal?new Date():null}});
-  await this.audit.record({action:'SAFETY_INCIDENT_STATUS_SET',resource:'SafetyIncident',resourceId:incidentId,metadata:{adminAccountId,previousStatus:incident.status,status:input.status,terminal}});
-  return updated;
+ closureContext(actor:string,id:string){return this.db.serializable(tx=>incidentClosureContext(tx,actor,id));}
+ pack(actor:string,id:string){return this.db.serializable(tx=>incidentPack(tx,actor,id));}
+ async decide(adminAccountId:string,incidentId:string,input:unknown){
+  evidenceId(incidentId);const command=incidentDecision(input),fingerprint=evidenceDigest({adminAccountId,incidentId,command});
+  return this.db.serializable(async tx=>{
+   await lockAccountIdentities(tx,[adminAccountId]);await requireVerifiedAdmin(tx,adminAccountId);
+   await tx.$queryRaw`SELECT "id" FROM "SafetyIncident" WHERE "id"::text=${incidentId} FOR UPDATE`;
+   const incident=await tx.safetyIncident.findUnique({where:{id:incidentId}});
+   if(!incident)throw new NotFoundException('Safety incident not found.');
+   const prior=await tx.auditEvent.findFirst({where:{action:'SAFETY_INCIDENT_STATUS_SET',resource:'SafetyIncident',resourceId:incidentId,metadata:{path:['requestId'],equals:command.requestId}},select:{metadata:true}});
+   if(prior){const saved=prior.metadata as Record<string,any>;if(saved.fingerprint!==fingerprint)throw new ConflictException('استُخدم طلب القرار نفسه ببيانات مختلفة.');return{...saved.result,alreadyApplied:true};}
+   if(incident.status==='CLOSED'||incident.updatedAt.getTime()!==Date.parse(command.expectedUpdatedAt))throw new ConflictException('تغير البلاغ أو أُغلق؛ حدّث التفاصيل قبل القرار.');
+   const closure=await closureEvidence(tx,adminAccountId,incident,command),updatedAt=new Date(Math.max(Date.now(),incident.updatedAt.getTime()+1));
+   const updated=await tx.safetyIncident.update({where:{id:incidentId},data:{status:command.status,resolutionNotes:command.resolutionNotes??incident.resolutionNotes,resolvedByAccountId:command.terminal?adminAccountId:null,resolvedAt:command.terminal?updatedAt:null,updatedAt}});
+   const result={id:updated.id,tripId:updated.tripId,status:updated.status,updatedAt:updatedAt.toISOString(),resolvedByAccountId:updated.resolvedByAccountId,resolvedAt:updated.resolvedAt?.toISOString()??null,closure,alreadyApplied:false};
+   await this.audit.record({actorId:adminAccountId,action:'SAFETY_INCIDENT_STATUS_SET',resource:'SafetyIncident',resourceId:incidentId,metadata:{requestId:command.requestId,fingerprint,adminAccountId,previousStatus:incident.status,status:command.status,terminal:command.terminal,resolutionNotes:command.resolutionNotes,result}},tx);
+   return result;
+  });
  }
 }

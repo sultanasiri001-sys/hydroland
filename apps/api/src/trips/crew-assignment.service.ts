@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from './policy-control.service';
-import { assertCalendarHumanAvailable, calendarBusyAccounts, trainingBusyAccounts } from './calendar-training-availability';
+import { calendarBusyAccounts, trainingBusyAccounts } from './calendar-training-availability';
+import { CrewAssignmentLifecycle } from './crew-assignment-lifecycle';
 
 type CrewResourceRow={id:string;type:string;name:string;referenceId:string};
 type AssignmentRow={id:string;tripId:string;resourceId:string;accountId:string;roleType:string;status:string;replacesAssignmentId:string|null;respondedAt:Date|null;createdAt:Date;updatedAt:Date};
@@ -14,10 +15,8 @@ type QualificationPolicy={master:QualificationDecision;instructorRole:Qualificat
 
 @Injectable()
 export class CrewAssignmentService{
-  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
-  private notify(accountId:string,type:string,payload:Record<string,unknown>,tx:Prisma.TransactionClient=this.db){return tx.notification.create({data:{accountId,type,payload:payload as Prisma.InputJsonValue,status:'PENDING'}});}
-  private async notifyAdmins(type:string,payload:Record<string,unknown>){const admins=await this.db.roleAssignment.findMany({where:{role:'ADMIN',status:'ACTIVE'},select:{accountId:true}});await Promise.all(admins.map((admin:{accountId:string})=>this.notify(admin.accountId,type,payload)));}
-  private async hasOverdueAlert(assignmentId:string){const rows=await this.db.$queryRaw<Array<{exists:boolean}>>`SELECT EXISTS(SELECT 1 FROM "Notification" WHERE "type"='CREW_RESPONSE_OVERDUE' AND "payload"->>'assignmentId'=${assignmentId}) AS "exists"`;return rows[0]?.exists===true;}
+  private readonly lifecycle:CrewAssignmentLifecycle;
+  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){this.lifecycle=new CrewAssignmentLifecycle(db,audit);}
   private async qualificationPolicy(tx:Prisma.TransactionClient=this.db):Promise<QualificationPolicy>{const [master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole]=await Promise.all([this.policies.decision('CREW','QUALIFICATION',tx),this.policies.decision('INSTRUCTOR','ACTIVE_ROLE',tx),this.policies.decision('INSTRUCTOR','VERIFIED_CREDENTIAL',tx),this.policies.decision('CAPTAIN','ACTIVE_ROLE',tx),this.policies.decision('CAPTAIN','VERIFIED_LICENSE',tx),this.policies.decision('CREW','ACTIVE_ROLE',tx)]);return{master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole};}
   private enforce(master:QualificationDecision,state:QualificationDecision){return state.mandatory||master.enforce&&state.enforce;}
   private review(master:QualificationDecision,state:QualificationDecision){return !state.mandatory&&(master.review||master.enforce&&state.review);}
@@ -57,92 +56,25 @@ export class CrewAssignmentService{
     return{rows:rows.filter(row=>!busy.has(row.referenceId)&&!calendarBusy.has(row.referenceId)),policy,reviews};
   }
 
-  async dispatchForConfirmedBooking(tripId:string,bookingId:string,client?:Prisma.TransactionClient){
-    const work=async(tx:Prisma.TransactionClient)=>{
-      const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');
-      if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Trip is closed.');
-      const qualified=await this.eligibleResources(tripId,undefined,undefined,tx),qualifiedIds=qualified.rows.map((r:CrewResourceRow)=>r.id);
-      const allocated=qualifiedIds.length?await tx.$queryRaw<CrewResourceRow[]>`SELECT r."id",r."type",r."name",r."referenceId" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND e."referenceId"=${tripId} AND a."status"='ACTIVE' AND r."id"=ANY(${qualifiedIds}::text[])`:[];
-      for(const resource of allocated){
-        const existing=await tx.crewAssignment.findFirst({where:{tripId,resourceId:resource.id,status:{in:['PENDING','ACCEPTED']}},orderBy:{createdAt:'desc'}});
-        const assignment=existing??await tx.crewAssignment.create({data:{tripId,resourceId:resource.id,accountId:resource.referenceId,roleType:resource.type,status:'PENDING'}});
-        await this.notify(assignment.accountId,existing?'TRIP_BOOKING_CONFIRMED':'TRIP_CREW_ASSIGNMENT',{assignmentId:assignment.id,tripId,bookingId,tripTitle:trip.title,startsAt:trip.startsAt.toISOString(),endsAt:trip.endsAt.toISOString(),roleType:assignment.roleType,resourceName:resource.name,actionRequired:assignment.status==='PENDING',policyReview:qualified.reviews},tx);
-      }
-      return{tripId,bookingId,notifiedCrew:allocated.length,policyReview:{required:qualified.reviews.length>0,issues:qualified.reviews,states:Object.fromEntries(Object.entries(qualified.policy).map(([key,value])=>[key,value.state]))}};
-    };
-    return client?work(client):this.db.serializable(work);
+  // Advisory candidate scheduling only. F02 source-backed commands perform
+  // their own current qualification, compensation and calendar checks.
+  dispatchForConfirmedBooking(tripId:string,bookingId:string,client?:Prisma.TransactionClient){return this.lifecycle.dispatchForConfirmedBooking(tripId,bookingId,client);}
+  mine(accountId:string){return this.lifecycle.mine(accountId);}
+  workspace(accountId:string,tripId?:string){return this.lifecycle.workspace(accountId,tripId);}
+  propose(accountId:string,tripId:string,body:unknown){return this.lifecycle.propose(accountId,tripId,body);}
+  command(accountId:string,id:string,body:unknown){return this.lifecycle.command(accountId,id,body);}
+  prepareTemplate(accountId:string,body:unknown){return this.lifecycle.prepareTemplate(accountId,body);}
+  respond(accountId:string,id:string,response:'ACCEPTED'|'REJECTED',body:unknown={}){return this.lifecycle.respond(accountId,id,response,body);}
+  async escalatePending(hoursBefore=24){
+    const policy=await this.policies.decision('CREW','RESPONSE_REQUIRED');
+    if(policy.bypass)return {checked:0,reassigned:0,adminRequired:0,hoursBefore,policyState:policy.state};
+    return {...await this.lifecycle.escalatePending(hoursBefore),policyState:policy.state};
   }
 
-  mine(accountId:string){return this.db.$queryRaw<AssignmentWithTripRow[]>`SELECT c.*,t."title" AS "tripTitle",t."type" AS "tripType",t."startsAt",t."endsAt" FROM "CrewAssignment" c JOIN "Trip" t ON t."id"=c."tripId" WHERE c."accountId"::text=${accountId} ORDER BY t."startsAt" ASC,c."createdAt" DESC LIMIT 100`;}
-
-  async escalatePending(hoursBefore=24){const responsePolicy=await this.policies.decision('CREW','RESPONSE_REQUIRED');if(responsePolicy.bypass)return{checked:0,reassigned:0,adminRequired:0,hoursBefore,policyState:responsePolicy.state};const boundedHours=Math.min(168,Math.max(1,Math.trunc(hoursBefore))),deadline=new Date(Date.now()+boundedHours*3600000);const pending=await this.db.$queryRaw<PendingAssignmentRow[]>`SELECT c.*,t."title" AS "tripTitle",t."startsAt",t."endsAt" FROM "CrewAssignment" c JOIN "Trip" t ON t."id"=c."tripId" WHERE c."status"='PENDING' AND t."status" IN ('OPEN','CLOSED') AND t."startsAt">(NOW() AT TIME ZONE 'UTC') AND t."startsAt"<=(${deadline}::timestamptz AT TIME ZONE 'UTC') ORDER BY t."startsAt" ASC`;let reassigned=0,adminRequired=0;for(const assignment of pending){if(responsePolicy.review){if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_REVIEW_REQUIRED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt});adminRequired+=1;}continue;}const replacement=await this.findReplacement(assignment);if(replacement){const created=await this.replaceAssignment(assignment,replacement,'REASSIGNED');if(created){await this.notify(assignment.accountId,'CREW_ASSIGNMENT_ESCALATED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,reason:'NO_RESPONSE_BEFORE_DEADLINE',startsAt:assignment.startsAt});reassigned+=1;}}else if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_OVERDUE',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt,hoursBefore:boundedHours});adminRequired+=1;}}return{checked:pending.length,reassigned,adminRequired,hoursBefore:boundedHours,policyState:responsePolicy.state};}
-
-  async respond(accountId:string,assignmentId:string,response:'ACCEPTED'|'REJECTED'){
-    const rows=await this.db.$queryRaw<AssignmentRow[]>`SELECT * FROM "CrewAssignment" WHERE "id"::text=${assignmentId} LIMIT 1`,assignment=rows[0];
-    if(!assignment||assignment.accountId!==accountId)throw new NotFoundException('Crew assignment not found.');
-    await this.db.serializable(async tx=>{
-      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true}});
-      if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trip crew assignments cannot be answered.');
-      const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${response},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignmentId} AND "status"='PENDING'`;
-      if(!changed)throw new ConflictException('Crew assignment already answered.');
-      await this.audit.record({actorId:accountId,action:'CREW_ASSIGNMENT_'+response,resource:'CrewAssignment',resourceId:assignmentId,metadata:{accountId,tripId:assignment.tripId,resourceId:assignment.resourceId,roleType:assignment.roleType}},tx);
-    });
-    if(response==='ACCEPTED'){await this.notifyAdmins('CREW_ASSIGNMENT_ACCEPTED',{assignmentId,tripId:assignment.tripId,accountId});return{assignmentId,status:'ACCEPTED'};}
-    const replacement=await this.findReplacement(assignment);
-    if(!replacement){await this.notifyAdmins('CREW_REPLACEMENT_REQUIRED',{assignmentId,tripId:assignment.tripId,roleType:assignment.roleType,rejectedByAccountId:accountId});return{assignmentId,status:'REJECTED',replacement:null,requiresAdminAction:true};}
-    const replacementAssignment=await this.replaceAssignment(assignment,replacement);if(!replacementAssignment)throw new ConflictException('Crew replacement could not be created.');return{assignmentId,status:'REJECTED',replacement:{assignmentId:replacementAssignment.id,accountId:replacement.referenceId,resourceId:replacement.id,resourceName:replacement.name}};
-  }
-
-  private async findReplacement(assignment:AssignmentRow):Promise<CrewResourceRow|null>{
-    const trip=await this.db.trip.findUnique({where:{id:assignment.tripId}});if(!trip)return null;
-    const qualified=await this.eligibleResources(assignment.tripId,assignment.resourceId,assignment.accountId),ids=qualified.rows.filter((r:CrewResourceRow)=>r.type===assignment.roleType).map((r:CrewResourceRow)=>r.id);if(!ids.length)return null;
-    const candidates=await this.db.$queryRaw<CrewResourceRow[]>`SELECT r."id",r."type",r."name",r."referenceId" FROM "CalendarResource" r WHERE r."id"=ANY(${ids}::text[]) AND NOT EXISTS(SELECT 1 FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" WHERE a."resourceId"=r."id" AND a."status"='ACTIVE' AND a."startsAt"<(${trip.endsAt}::timestamptz AT TIME ZONE 'UTC') AND a."endsAt">(${trip.startsAt}::timestamptz AT TIME ZONE 'UTC') AND (e."referenceType"<>'TRIP' OR e."referenceId"<>${assignment.tripId})) AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" c WHERE c."tripId"::text=${assignment.tripId} AND c."accountId"::text=r."referenceId" AND c."status" IN ('PENDING','ACCEPTED')) ORDER BY r."name" ASC LIMIT 1`;
-    return candidates[0]??null;
-  }
-
-  private async replaceAssignment(assignment:AssignmentRow,replacement:CrewResourceRow,previousStatus?:'REASSIGNED'):Promise<AssignmentRow|null>{
-    const created=await this.db.serializable(async(tx:Prisma.TransactionClient)=>{
-      await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
-      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true,startsAt:true,endsAt:true,organizationId:true}});
-      if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))return null;
-      const resource=await tx.calendarResource.findFirst({where:{id:replacement.id,referenceId:replacement.referenceId,type:assignment.roleType,active:true},select:{id:true}});
-      if(!resource)throw new ConflictException('Crew replacement resource changed.');
-      await assertCalendarHumanAvailable(tx,[replacement.id],trip.startsAt,trip.endsAt,assignment.tripId);
-      const conflict=await tx.calendarAllocation.findFirst({where:{resourceId:replacement.id,status:'ACTIVE',startsAt:{lt:trip.endsAt},endsAt:{gt:trip.startsAt},NOT:{event:{referenceType:'TRIP',referenceId:assignment.tripId}}},select:{id:true}});
-      if(conflict)throw new ConflictException('Calendar resource conflict detected.');
-      if(previousStatus){const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${previousStatus},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignment.id} AND "status"='PENDING'`;if(!changed)return null;}
-      await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "resourceId"=${replacement.id},"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${assignment.tripId} AND a."resourceId"=${assignment.resourceId} AND a."status"='ACTIVE'`;
-      const rows=await tx.$queryRaw<AssignmentRow[]>`
-        INSERT INTO "CrewAssignment"("id","tripId","resourceId","accountId","roleType","status","replacesAssignmentId","createdAt","updatedAt")
-        SELECT gen_random_uuid(),t."id",${replacement.id},ac."id",${assignment.roleType},'PENDING',old."id",NOW(),NOW()
-        FROM "Trip" t
-        JOIN "Account" ac ON ac."id"::text=${replacement.referenceId}
-        JOIN "CrewAssignment" old ON old."id"::text=${assignment.id}
-        WHERE t."id"::text=${assignment.tripId}
-        RETURNING *`;
-      const created = rows[0];
-      if (!created) throw new ConflictException('Crew replacement source changed.');
-      await this.audit.record({
-        action: 'CREW_ASSIGNMENT_REASSIGNED',
-        resource: 'CrewAssignment',
-        resourceId: created.id,
-        metadata: {
-          ...(trip.organizationId && {organizationId: trip.organizationId}),
-          tripId: assignment.tripId,
-          previousAssignmentId: assignment.id,
-          previousAccountId: assignment.accountId,
-          replacementAccountId: replacement.referenceId,
-          previousResourceId: assignment.resourceId,
-          replacementResourceId: replacement.id,
-          roleType: assignment.roleType,
-        },
-      }, tx);
-      return created;
-    });
-    if(!created)return null;
-    const trip=await this.db.trip.findUnique({where:{id:assignment.tripId}});
-    await this.notify(replacement.referenceId,'TRIP_CREW_ASSIGNMENT',{assignmentId:created.id,tripId:assignment.tripId,tripTitle:trip?.title??'HYDROLAND Trip',startsAt:trip?.startsAt??null,endsAt:trip?.endsAt??null,roleType:assignment.roleType,resourceName:replacement.name,replacementForAssignmentId:assignment.id,actionRequired:true});
-    await this.notifyAdmins('CREW_REASSIGNED',{tripId:assignment.tripId,rejectedAssignmentId:assignment.id,replacementAssignmentId:created.id,replacementAccountId:replacement.referenceId,roleType:assignment.roleType});
-    return created;
+  // Retain a fail-closed boundary for old internal callers. No code path may
+  // silently promote a candidate into a replacement without an independent
+  // approval and the substitute's own recorded acceptance.
+  private async replaceAssignment(..._legacy:unknown[]):Promise<never>{
+    throw new ConflictException({code:'F02_INDEPENDENT_APPROVAL_REQUIRED',message:'F02_INDEPENDENT_APPROVAL_REQUIRED'});
   }
 }

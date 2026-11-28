@@ -217,6 +217,12 @@ model Person {
 }
 
 model Account {
+  tripReturnRecords TripReturnRecord[]
+  communityProgramsOwned CommunityProgram[] @relation("CommunityProgramOwner")
+  communityProgramsAdopted CommunityProgram[] @relation("CommunityProgramAdopter")
+  communityBuddyMemberships CommunityBuddyMembership[]
+  communityBuddyRequestsSent CommunityBuddyRequest[] @relation("CommunityBuddyRequester")
+  communityBuddyRequestsReceived CommunityBuddyRequest[] @relation("CommunityBuddyRecipient")
   participationCreatedCases ParticipationCase[] @relation("ParticipationCaseCreator")
   participationCases ParticipationCase[] @relation("ParticipationCaseParticipant")
   participationGuardianCases ParticipationCase[] @relation("ParticipationCaseGuardian")
@@ -327,6 +333,7 @@ model Account {
 }
 
 model Organization {
+  communityPrograms CommunityProgram[]
   marketingCampaignLifecycles MarketingCampaignLifecycle[]
   participationCases ParticipationCase[]
   retailStockCounts StoreStockCount[]
@@ -822,6 +829,7 @@ enum BookingStatus {
 }
 
 model Trip {
+  returnRecord TripReturnRecord?
   marineAssetId String?
   marineAsset MarineAsset? @relation(fields:[marineAssetId], references:[id], onDelete:Restrict)
   id String @id @default(uuid())
@@ -950,6 +958,15 @@ model CrewAssignment {
   status String @default("PENDING")
   replacesAssignmentId String?
   respondedAt DateTime?
+  revision Int @default(1)
+  requestedByAccountId String?
+  approvedByAccountId String?
+  approvedAt DateTime?
+  replacesRevision Int?
+  qualificationSnapshot Json?
+  compensationSnapshot Json?
+  approvalAuthority Json?
+  decisionReason String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
@@ -958,6 +975,21 @@ model CrewAssignment {
   @@index([tripId,status])
   @@index([accountId,status])
   @@index([resourceId])
+}
+
+// Command receipts are immutable retry evidence. They contain safe response
+// projections, never credential files or compensation source documents.
+model CrewAssignmentCommand {
+  id String @id @default(uuid())
+  actorAccountId String
+  requestId String
+  assignmentId String
+  action String
+  fingerprint String
+  result Json
+  createdAt DateTime @default(now())
+  @@unique([actorAccountId,requestId])
+  @@index([assignmentId,createdAt])
 }
 
 enum OperationalDecision {
@@ -1070,6 +1102,7 @@ model CommunityPost {
 }
 
 model CommunityEvent {
+  programBinding CommunityEventProgram?
   id String @id @default(uuid())
   createdByAccountId String
   title String
@@ -1088,6 +1121,7 @@ model CommunityEvent {
 }
 
 model CommunityVolunteerRegistration {
+  programConsent CommunityVolunteerConsent?
   id String @id @default(uuid())
   eventId String
   accountId String
@@ -1105,6 +1139,89 @@ model CommunityVolunteerRegistration {
   @@unique([eventId,accountId])
   @@index([accountId,status,createdAt])
   @@index([eventId,status,createdAt])
+}
+
+// F03 sources are explicit native document adoptions. No policy is seeded.
+model CommunityProgram {
+  id String @id
+  documentId String
+  organizationId String
+  version Int
+  contentHash String
+  sourceHash String
+  ownerAccountId String
+  adoptedByAccountId String
+  adoptedAt DateTime @default(now()) @db.Timestamptz(6)
+  state String @default("ACTIVE")
+  document ManagedDocument @relation(fields:[documentId],references:[id],onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  owner Account @relation("CommunityProgramOwner",fields:[ownerAccountId],references:[id],onDelete:Restrict)
+  adopter Account @relation("CommunityProgramAdopter",fields:[adoptedByAccountId],references:[id],onDelete:Restrict)
+  events CommunityEventProgram[]
+  volunteerConsents CommunityVolunteerConsent[]
+  memberships CommunityBuddyMembership[]
+  requests CommunityBuddyRequest[]
+  @@unique([documentId,version])
+}
+model CommunityEventProgram {
+  eventId String @id
+  programId String
+  activity String
+  event CommunityEvent @relation(fields:[eventId],references:[id],onDelete:Cascade)
+  program CommunityProgram @relation(fields:[programId],references:[id],onDelete:Restrict)
+  @@index([programId],map:"CommunityEventProgram_program")
+}
+model CommunityVolunteerConsent {
+  registrationId String @id
+  programId String
+  sourceHash String
+  consentedAt DateTime @default(now()) @db.Timestamptz(6)
+  registration CommunityVolunteerRegistration @relation(fields:[registrationId],references:[id],onDelete:Cascade)
+  program CommunityProgram @relation(fields:[programId],references:[id],onDelete:Restrict)
+}
+model CommunityBuddyMembership {
+  id String @id
+  programId String
+  accountId String
+  sourceHash String
+  alias String
+  region String
+  state String @default("ACTIVE")
+  revision Int @default(1)
+  consentedAt DateTime @default(now()) @db.Timestamptz(6)
+  withdrawnAt DateTime? @db.Timestamptz(6)
+  program CommunityProgram @relation(fields:[programId],references:[id],onDelete:Restrict)
+  account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
+  sentRequests CommunityBuddyRequest[] @relation("BuddyRequesterMembership")
+  receivedRequests CommunityBuddyRequest[] @relation("BuddyRecipientMembership")
+  @@unique([programId,accountId])
+  @@index([programId,state],map:"CommunityBuddyMembership_program_state")
+}
+model CommunityBuddyRequest {
+  id String @id
+  programId String
+  requesterAccountId String
+  recipientAccountId String
+  requesterMembershipId String
+  recipientMembershipId String
+  requesterRevision Int
+  recipientRevision Int
+  sourceHash String
+  pairKey String
+  requestKey String
+  requestDigest String
+  status String @default("PENDING")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  respondedAt DateTime? @db.Timestamptz(6)
+  program CommunityProgram @relation(fields:[programId],references:[id],onDelete:Restrict)
+  requester Account @relation("CommunityBuddyRequester",fields:[requesterAccountId],references:[id],onDelete:Restrict)
+  recipient Account @relation("CommunityBuddyRecipient",fields:[recipientAccountId],references:[id],onDelete:Restrict)
+  requesterMembership CommunityBuddyMembership @relation("BuddyRequesterMembership",fields:[requesterMembershipId],references:[id],onDelete:Restrict)
+  recipientMembership CommunityBuddyMembership @relation("BuddyRecipientMembership",fields:[recipientMembershipId],references:[id],onDelete:Restrict)
+  @@unique([requesterAccountId,requestKey])
+  @@index([recipientAccountId,createdAt],map:"CommunityBuddyRequest_recipient_created")
+  @@index([requesterAccountId,createdAt],map:"CommunityBuddyRequest_requester_created")
+  // The partial current-pair uniqueness and state checks live in the migration.
 }
 
 model CommunityEngagementRequest {
@@ -2924,6 +3041,7 @@ model DocumentTemplate {
 }
 
 model ManagedDocument {
+  communityPrograms CommunityProgram[]
   marketingCampaignRights MarketingCampaignLifecycle[] @relation("CampaignRightsSource")
   marketingCampaignBudgets MarketingCampaignLifecycle[] @relation("CampaignBudgetSource")
   participationPolicyCases ParticipationCase[] @relation("ParticipationPolicySource")
@@ -3893,4 +4011,19 @@ model ProcurementApiProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   owner Account @relation(fields:[ownerAccountId],references:[id],onDelete:Restrict)
+}
+
+// Factual, operator-recorded return accountability. Revisions remain in AuditEvent.
+model TripReturnRecord {
+  tripId String @id
+  revision Int
+  sourceDigest String
+  entries Json
+  observedAt DateTime @db.Timestamptz(3)
+  recordedByAccountId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
+  recordedBy Account @relation(fields:[recordedByAccountId],references:[id],onDelete:Restrict)
+  @@index([recordedByAccountId])
 }

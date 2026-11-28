@@ -84,7 +84,8 @@
   "سحب التفويض": "Revoke delegation",
   "تم منح تفويض التوصية": "Recommendation authority granted",
   "تم سحب تفويض التوصية": "Recommendation authority revoked",
-  "الوثائق والتراخيص": "Documents and licenses"
+  "الوثائق والتراخيص": "Documents and licenses",
+  "جواز الأصل": "Asset passport"
 }) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
 
   // Read live preference per action; missing media support must not animate.
@@ -183,6 +184,7 @@
       <div class="hl-marine-row"><div><strong>${esc(asset.name)}</strong><small> · ${esc(asset.assetType)} · ${esc(asset.registrationNumber || uiLocale.t('بدون رقم'))}</small></div>
         <span class="hl-marine-state">${esc(asset.status)}</span></div>
       <p class="hl-marine-note" data-marine-hull>${uiLocale.label('رقم الهيكل: {0}', [asset.hullNumber || uiLocale.t('غير مسجل')])}</p>
+      <button type="button" data-asset-passport-kind="MARINE" data-asset-passport-id="${esc(asset.id)}">${uiLocale.label("جواز الأصل")}</button>
       ${centerPicker(asset)}
       <div class="hl-marine-slots">${Object.keys(documentNames).map(type => documentSlot(type, asset, now)).join('')}</div>
     </article>`;

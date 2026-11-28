@@ -119,10 +119,11 @@ exports.completeTrip = async (f, line, offer) => {
   const tripId = offer.trip.id;
   // Synthetic prerequisites exercise the existing operational reader and actual
   // clearance/confirmation/completion commands without fabricating completion.
-  const [site, crew] = await Promise.all(['SITE', 'INSTRUCTOR'].map(type => f.db.calendarResource.create({data: {type, name: 'Synthetic B08 ' + type,
-    ...(type === 'INSTRUCTOR' ? {referenceId: f.owner.id} : {})}})));
+  const site = await f.db.calendarResource.create({data: {type:'SITE',name:'Synthetic B08 SITE'}});
+  const {crewAssignmentFixture} = await import('./crew-assignment-isolated-fixture.mjs');
+  const crewFixture = await crewAssignmentFixture(f.db,{load:f.load}), crew = (await crewFixture.ready(tripId,{roleType:'INSTRUCTOR'})).resource;
   await f.db.safetyChecklist.create({data: {tripId, decision: 'ALLOWED', items: {synthetic: true}, notes: 'Synthetic CI-only prerequisite', decidedAt: new Date()}});
-  await f.db.crewAssignment.create({data: {tripId, resourceId: crew.id, accountId: f.owner.id, roleType: 'INSTRUCTOR', status: 'ACCEPTED', respondedAt: new Date()}});
+  // F02 records the actual synthetic qualification/compensation and independent decision before departure.
   const calendar = f.app.get(f.load('trips/calendar-allocation.service.js').CalendarAllocationService);
   await calendar.allocate(f.owner.id, tripId, [site.id, crew.id]);
   const compliance = f.app.get(f.load('trips/trip-compliance.service.js').TripComplianceService);
@@ -173,6 +174,10 @@ exports.completeTrip = async (f, line, offer) => {
   const input = {requestId: randomUUID(), expectedUpdatedAt: preview.trip.updatedAt, expectedState: preview.stateToken,
     reason: 'Synthetic B08 completed trip with original attendance', financialAcknowledged: true,
     attendedParticipantIds: participants.map(row => row.id), siteName: 'SYNTHETIC LOOPBACK SITE', maxDepthM: 1, durationMin: 1};
+  const returnPath = `/trips/return-accountability/${tripId}`, roster = f.ok(await f.call(f.owner, returnPath));
+  f.ok(await f.call(f.owner, returnPath, 'POST', {requestId: randomUUID(), expectedRevision: roster.revision, expectedState: roster.stateToken,
+    observedAt: new Date().toISOString(), reason: 'Synthetic B08 return: each actual fixture participant and crew member was explicitly accounted for.',
+    entries: roster.roster.map(row => ({kind: row.kind, id: row.id, status: 'RETURNED'}))}));
   f.ok(await f.call(f.owner, `/trips/admin/${tripId}/complete`, 'POST', input));
   assert.equal(f.ok(await f.call(f.owner, `/trips/admin/${tripId}/complete`, 'POST', input)).alreadyApplied, true);
   assert.equal((await f.db.trip.findUniqueOrThrow({where: {id: tripId}})).status, 'COMPLETED');

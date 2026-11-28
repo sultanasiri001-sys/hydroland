@@ -1,3 +1,4 @@
+import {crewAssignmentFixture} from './crew-assignment-isolated-fixture.mjs';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as wait} from 'node:timers/promises';
 import { checkDiveLogReview } from './dive-log-review-http-checks.mjs';
@@ -5,6 +6,7 @@ import {participationFixture} from './participation-isolated-fixture.mjs';
 export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
  const participation=participationFixture(db,base);
  const trips=[],resources=[],events=[],bookings=[];
+ let crewFixture;
  const call=async(token,path,method='GET',body)=>{const response=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
  const path=id=>'/center/me/trips/'+id;
  const preview=async id=>{const r=await call(ta,path(id)+'/lifecycle');check(r.status===200,'Lifecycle preview: '+JSON.stringify(r));return r.body};
@@ -47,6 +49,8 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   check((await call(ta,'/trips/crew/assignments/'+crew.id+'/respond','PATCH',{response:'ACCEPTED'})).status===409,'Cancelled crew cannot accept an assignment');
 
   const trip=await make('OPEN',true),site=await allocate(trip),cb=await book(trip,ownerA.id,'CONFIRMED',2),pb=await book(trip,admin.id,'PENDING');
+  crewFixture=await crewAssignmentFixture(db);
+  const acceptedCrew=await crewFixture.ready(trip.id,{roleType:'CREW'});resources.push(acceptedCrew.resource.id);
   const attendee=await db.bookingParticipant.create({data:{bookingId:cb.id,accountId:ownerA.id,fullName:'حضر الغوص',eligibilityStatus:'PENDING'}}),absent=await db.bookingParticipant.create({data:{bookingId:cb.id,fullName:'لم يحضر',eligibilityStatus:'PENDING'}});
   for(const participant of [attendee,absent]){
    const evidence=await participation.prepare('BOOKING_PARTICIPANT',participant.id,{review:true});
@@ -63,7 +67,7 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   check((await apply(trip.id,c)).status===409,'Missing operational clearance blocks completion');
   check(await db.diveLog.count({where:{sourceTripId:trip.id}})===0,'Blocked completion creates no dive logs');
   await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',decidedAt:new Date(),items:{weather:{decision:'ALLOWED',waveHeightM:0.2,windSpeedKph:4,observedAt:new Date().toISOString()}}}});
-  await db.crewAssignment.create({data:{tripId:trip.id,resourceId:site.id,accountId:admin.id,roleType:'CREW',status:'ACCEPTED'}});
+  // Crew was independently approved and personally accepted before departure.
   await db.$executeRaw`INSERT INTO "TripComplianceReview"("id","tripId","regulatoryStatus","permitStatus","createdAt","updatedAt") VALUES(${randomUUID()},${trip.id},'APPROVED','APPROVED',NOW(),NOW())`;
   const requestGrant=()=>call(adminToken,'/trips/admin/'+trip.id+'/operational-clearance','POST',{reason:'Isolated CI operational readiness review'});
   const grant=async()=>{const r=await requestGrant();check(r.status===201,'Canonical clearance must pass actual readiness: '+JSON.stringify(r));return r.body};
@@ -80,10 +84,16 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   // independent D01 decision remain intact. Never backdate their evidence.
   await db.bookingParticipant.update({where:{id:attendee.id},data:{eligibilityStatus:'ELIGIBLE'}});await grant();
   p=await preview(trip.id);c=command(p,'COMPLETE',completeData);
+  const noReturn=await apply(trip.id,c);check(noReturn.status===409&&JSON.stringify(noReturn.body).includes('حصر'),'Otherwise-ready completion requires original factual return accountability');
+  const returnPath='/trips/return-accountability/'+trip.id,returnPreview=await call(ta,returnPath);
+  check(returnPreview.status===200&&returnPreview.body.roster.length===3,'Factual roster includes both participants and accepted qualified crew');
+  const returnBody={requestId:randomUUID(),expectedRevision:returnPreview.body.revision,expectedState:returnPreview.body.stateToken,observedAt:new Date().toISOString(),reason:'Synthetic observed return: both passengers and crew returned, only one passenger actually dived.',entries:returnPreview.body.roster.map(row=>({kind:row.kind,id:row.id,status:'RETURNED'}))};
+  check((await call(ta,returnPath,'POST',returnBody)).status===201,'Current factual return is recorded through real HTTP');
+  check(await db.diveLog.count({where:{sourceTripId:trip.id}})===0,'Recording returned passengers alone never creates a dive log');
   let result=await apply(trip.id,c);check(result.status===201&&result.body.createdDiveLogs===1&&result.body.absentParticipants===1,'Completion saves only explicit attendance: '+JSON.stringify(result));
   check((await apply(trip.id,c)).body.alreadyApplied===true,'Completion retry works after resources and clearance change');
   const logs=await db.diveLog.findMany({where:{sourceTripId:trip.id}});check(logs.length===1&&logs[0].sourceParticipantId===attendee.id&&logs[0].status==='DRAFT'&&!logs[0].verifiedAt,'Only attendee gets an unverified dive log');
-  check(!logs.some(log=>log.sourceParticipantId===absent.id),'Absentee gets no dive record');
+  check(!logs.some(log=>log.sourceParticipantId===absent.id),'Returned passenger who did not dive gets no dive record');
   await checkDiveLogReview(db, { call, log: logs[0], admin, adminToken, ownerToken: ta, personAccount, tokenFor }, check);
   check((await db.booking.findUnique({where:{id:pb.id}})).status==='CANCELLED'&&(await db.booking.findUnique({where:{id:cb.id}})).status==='CONFIRMED','Pending bookings closed, confirmed booking history retained');
   check(await db.auditEvent.count({where:{resourceId:trip.id,action:'TRIP_COMPLETED'}})===1,'Completion audit and attendance recorded once');
@@ -96,8 +106,12 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
  }finally{
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});await db.organizationMember.update({where:{id:a.member.id},data:{status:'ACTIVE'}});
   await participation.cleanup();
+  if(crewFixture){
+   await db.compensationTerm.deleteMany({where:{id:{in:crewFixture.created.terms.map(row=>row.id)}}});
+   await db.employment.deleteMany({where:{id:{in:crewFixture.created.employments.map(row=>row.id)}}});
+  }
   await db.diveLog.deleteMany({where:{sourceTripId:{in:trips}}});await db.invoice.deleteMany({where:{payment:{bookingId:{in:bookings}}}});await db.payment.deleteMany({where:{bookingId:{in:bookings}}});await db.bookingParticipant.deleteMany({where:{bookingId:{in:bookings}}});await db.booking.deleteMany({where:{id:{in:bookings}}});await db.crewAssignment.deleteMany({where:{tripId:{in:trips}}});await db.safetyChecklist.deleteMany({where:{tripId:{in:trips}}});await db.calendarAllocation.deleteMany({where:{eventId:{in:events}}});await db.calendarEvent.deleteMany({where:{id:{in:events}}});await db.calendarResource.deleteMany({where:{id:{in:resources}}});
-  for(const id of trips)await db.$executeRaw`DELETE FROM "TripComplianceReview" WHERE "tripId"=${id}`;
+  for(const id of trips){await db.$executeRaw`DELETE FROM "TripComplianceReview" WHERE "tripId"=${id}`;await db.$executeRaw`DELETE FROM "TripReturnRecord" WHERE "tripId"::text=${id}`;}
   await db.operationalSetting.deleteMany({where:{key:{in:trips.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:trips}}});
  }
 }

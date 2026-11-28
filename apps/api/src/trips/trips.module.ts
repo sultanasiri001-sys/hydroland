@@ -4,6 +4,8 @@ import { OperationalControlsController } from './operational-controls.controller
 import { OperationalControlsService } from './operational-controls.service';
 import { BookingManagementService } from './booking-management.service';
 import { TripLifecycleService } from './trip-lifecycle.service';
+import { TripReturnService } from './trip-return.service';
+import { TripReturnController } from './trip-return.controller';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -55,8 +57,8 @@ import { StormglassWeatherService } from './stormglass-weather.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, IntegrationModule, MarineOperationsModule],
-  controllers: [RentalDamageController,OperationalControlsController,TripsController,MarineTripBookingsController,OrganizationBookingsController,TripComplianceController,EquipmentInventoryController,InventoryStocktakeController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,EquipmentInspectionController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
-  providers: [RentalDamageService,OperationalControlsService,BookingManagementService,TripLifecycleService,TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
+  controllers: [TripReturnController,RentalDamageController,OperationalControlsController,TripsController,MarineTripBookingsController,OrganizationBookingsController,TripComplianceController,EquipmentInventoryController,InventoryStocktakeController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,EquipmentInspectionController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
+  providers: [TripReturnService,RentalDamageService,OperationalControlsService,BookingManagementService,TripLifecycleService,TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
   exports: [TripsService,BookingManagementService,TripLifecycleService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,TripWeatherReviewService],
 })
 export class TripsModule {}

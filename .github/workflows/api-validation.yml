@@ -370,6 +370,122 @@ jobs:
           name: d02-training-certification-evidence
           path: artifacts/d02-*
           if-no-files-found: warn
+      - name: F01 asset passport lifecycle through native HTTP and original marine review
+        env:
+          CI: 'true'
+          NODE_ENV: test
+          F01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F01_RESULT_FILE: artifacts/f01-asset-passport-acceptance.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/f01_asset_passport_test
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE f01_asset_passport_test'
+          node apps/api/scripts/f01-asset-passports-http-e2e.mjs
+      - name: Retain F01 asset passport acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f01-asset-passport-evidence
+          path: artifacts/f01-*
+          if-no-files-found: warn
+      - name: F02 crew qualification, compensation, independent replacement and migration acceptance
+        env:
+          CI: 'true'
+          NODE_ENV: test
+          F02_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F02_EVIDENCE_PATH: artifacts/f02-crew-acceptance.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/f02_crew_test
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE f02_crew_test'
+          node apps/api/scripts/f02-crew-assignment-http-e2e.mjs
+      - name: Retain F02 native crew acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f02-crew-assignment-evidence
+          path: artifacts/f02-*
+          if-no-files-found: warn
+      - name: F03 source programs, mutual buddy consent and volunteer corrections on PostgreSQL 18
+        env:
+          CI: 'true'
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          JWT_SECRET: ci-f03-disposable-acceptance-secret-at-least-32-characters
+          PORT: 3143
+          HYDROLAND_AI_TEST_MANUAL_WORKER: '1'
+          HYDROLAND_EMAIL_PROVIDER: NONE
+          HYDROLAND_INTEGRATION_EMAIL_STATUS: DISABLED
+          HYDROLAND_PAYMENT_PROVIDER: NONE
+          HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS: DISABLED
+          F03_E2E_BASE_URL: http://127.0.0.1:3143/api/v1
+          F03_EVIDENCE_FILE: artifacts/f03-community-acceptance.json
+          F03_MIGRATION_EVIDENCE_FILE: artifacts/f03-native-key-migration.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/f03_community_test
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE f03_community_test'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql
+          # Only these empty tables in the database created immediately above
+          # are replaced, so the actual additive migration installs its checks.
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE "CommunityBuddyRequest", "CommunityBuddyMembership", "CommunityVolunteerConsent", "CommunityEventProgram", "CommunityProgram"'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261128040000_community_program_buddy_consent/migration.sql
+          node apps/api/scripts/community-f03-migration-types.mjs
+          node apps/api/dist/main.js > /tmp/hydroland-f03-api.log 2>&1 &
+          F03_API_PID=$!
+          trap 'F03_EXIT=$?; kill $F03_API_PID || true; if [ "$F03_EXIT" -ne 0 ]; then cat /tmp/hydroland-f03-api.log; fi' EXIT
+          F03_READY=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3143/api/v1/health/ready > /dev/null; then F03_READY=1; break; fi
+            if ! kill -0 $F03_API_PID 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$F03_READY" -ne 1 ]; then cat /tmp/hydroland-f03-api.log; exit 1; fi
+          node apps/api/scripts/community-f03-http-checks.mjs
+      - name: Retain F03 native program and consent evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f03-community-program-evidence
+          path: artifacts/f03-*
+          if-no-files-found: warn
+      - name: D04 return accountability, independent incident closure and native migration acceptance
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D04_MIGRATION_CHECK_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+          D04_ACCEPTANCE_OUTPUT: artifacts/d04-trip-return-incident-acceptance.json
+          D04_MIGRATION_RESULT_FILE: artifacts/d04-trip-return-migration.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/participation_test_d01_d04_acceptance
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE participation_test_d01_d04_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127010000_participation_source_eligibility/migration.sql
+          # This database was created above; replace only its empty return table
+          # so HTTP acceptance exercises the actual migration's CHECK constraints.
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE "TripReturnRecord"'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261128050000_trip_return_accountability/migration.sql
+          node apps/api/scripts/d04-trip-return-migration-checks.mjs
+          node apps/api/scripts/d04-trip-return-incident-acceptance.cjs
+      - name: Retain D04 native acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d04-trip-return-incident-evidence
+          path: artifacts/d04-*
+          if-no-files-found: warn
       - name: Course original-contract checkout and collection through real HTTP routes
         env:
           NODE_ENV: test
@@ -807,9 +923,15 @@ jobs:
         run: node apps/api/scripts/credential-integrity-db-e2e.mjs
       - name: Diver profile production-schema PostgreSQL E2E
         run: node apps/api/scripts/diver-profile-schema-db-e2e.mjs
+      - name: Prepare isolated composite HTTP database
+        run: |
+          # Preserve the canonical isolated fixture in a named GitHub database
+          # accepted by the provider, participation and crew fixture guards.
+          psql postgresql://hydroland:hydroland@localhost:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_d03_hr_http_test_availability_ci TEMPLATE hydroland'
       - name: HR HTTP/DB E2E
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
           D03_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
           PORT: 3101
@@ -932,11 +1054,14 @@ jobs:
           fi
 
       - name: Phase 4 append-only audit database boundary
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
         run: node apps/api/scripts/audit-append-only-validation.mjs
 
       - name: Rental and trip operational-clearance checks on UTC and Riyadh database connections
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
           PORT: 3111
           JWT_SECRET: disposable-test-secret-for-rental-deadlines
           EQUIPMENT_E2E_BASE_URL: http://127.0.0.1:3111/api/v1

@@ -49,11 +49,12 @@ export class CommunityController {
 
   @UseGuards(AccessTokenGuard)
   @Get('volunteers/mine')
+  @Header('Cache-Control','private, no-store')
   myVolunteerWork(@Req()request:RequestAuth){return this.community.myVolunteerWork(request.auth.accountId)}
 
   @UseGuards(AccessTokenGuard)
   @Post('events/:eventId/volunteers')
-  registerVolunteer(@Req()request:RequestAuth,@Param('eventId')eventId:string){return this.community.registerVolunteer(request.auth.accountId,eventId)}
+  registerVolunteer(@Req()request:RequestAuth,@Param('eventId')eventId:string,@Body() body:{programConsent?:unknown}){return this.community.registerVolunteer(request.auth.accountId,eventId,body?.programConsent)}
 
   @UseGuards(AccessTokenGuard)
   @Patch('volunteers/:registrationId/cancel')

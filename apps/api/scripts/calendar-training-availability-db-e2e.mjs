@@ -1,3 +1,4 @@
+import {crewAssignmentFixture} from './crew-assignment-isolated-fixture.mjs';
 import assert from 'node:assert/strict';
 import {summarizeAudit} from '../../../scripts/d12-audit-summary.mjs';
 import {randomUUID} from 'node:crypto';
@@ -94,7 +95,7 @@ try{
   const oldResource=await resource((await account()).id);
   await calendar.allocate(other.id,replacementTrip.id,[oldResource.id]);
   const assignment=await db.crewAssignment.create({data:{tripId:replacementTrip.id,resourceId:oldResource.id,accountId:oldResource.referenceId,roleType:'INSTRUCTOR',status:'PENDING'}});
-  await conflict(()=>crew.replaceAssignment(assignment,{id:openResource.id,type:'INSTRUCTOR',referenceId:openInstructor.id,name:openResource.name},'REASSIGNED'),'automatic replacement rechecks training in the write transaction');
+  await conflict(()=>crew.replaceAssignment(assignment,{id:openResource.id,type:'INSTRUCTOR',referenceId:openInstructor.id,name:openResource.name},'REASSIGNED'),'legacy automatic replacement path cannot bypass independent F02 approval');
   check((await db.crewAssignment.findUnique({where:{id:assignment.id}})).status==='PENDING','rejected replacement preserves prior assignment');
   await db.policyControl.create({data:{category:'CREW',ruleKey:'QUALIFICATION',labelAr:'Local availability fixture',state:'DISABLED'}});
   const eligible=await crew.eligibleResources(replacementTrip.id);
@@ -105,18 +106,23 @@ try{
     members: {create: {accountId: other.id, role: 'OWNER', status: 'ACTIVE'}},
   }});
   await db.trip.update({where: {id: replacementTrip.id}, data: {organizationId: reportingCenter.id}});
-  const replacementInput = {id: otherResource.id, type: 'INSTRUCTOR', referenceId: other.id, name: otherResource.name};
+  const crewFixture=await crewAssignmentFixture(db);
+  const candidate=await crewFixture.candidate(replacementTrip.id,{account:other,resource:otherResource});
+  const replacementInput={requestId:randomUUID(),resourceId:otherResource.id,sourceId:candidate.source.id,waitlisted:false,replacesAssignmentId:assignment.id,replacesRevision:1,reason:'Synthetic qualified replacement'};
   const failedCrew = new CrewAssignmentService(db, new PolicyControlService(db, audit), {
     record: async () => { throw new Error('Injected crew audit failure'); },
   });
-  await assert.rejects(() => failedCrew.replaceAssignment(assignment, replacementInput, 'REASSIGNED'), /Injected crew audit failure/);
+  await assert.rejects(() => failedCrew.propose(crewFixture.requester.id,replacementTrip.id,replacementInput), /Injected crew audit failure/);
   check(await db.crewAssignment.count({where: {replacesAssignmentId: assignment.id}}) === 0 &&
     (await db.crewAssignment.findUniqueOrThrow({where: {id: assignment.id}})).status === 'PENDING',
     'audit failure rolls back the crew replacement and keeps the original assignment pending');
   check(await db.calendarAllocation.count({where: {resourceId: oldResource.id, event: {referenceId: replacementTrip.id}, status: 'ACTIVE'}}) === 1,
     'audit failure preserves the original calendar allocation');
-  const replacement=await crew.replaceAssignment(assignment,replacementInput,'REASSIGNED');
-  check(Boolean(replacement?.id)&&(await db.calendarAllocation.count({where:{resourceId:otherResource.id,event:{referenceId:replacementTrip.id},status:'ACTIVE'}}))===1,'free automatic replacement retains the existing successful flow');
+  const proposed=await crew.propose(crewFixture.requester.id,replacementTrip.id,replacementInput);
+  const approved=await crew.command(crewFixture.approver.id,proposed.assignmentId,{requestId:randomUUID(),expectedRevision:proposed.revision,action:'APPROVE',reason:'Independent synthetic replacement approval'});
+  await crew.respond(other.id,proposed.assignmentId,'ACCEPTED',{requestId:randomUUID(),expectedRevision:approved.revision,reason:'Synthetic candidate accepts replacement'});
+  const replacement=await db.crewAssignment.findUniqueOrThrow({where:{id:proposed.assignmentId}});
+  check(Boolean(replacement?.id)&&(await db.calendarAllocation.count({where:{resourceId:otherResource.id,event:{referenceId:replacementTrip.id},status:'ACTIVE'}}))===1,'free qualified replacement is independently approved and accepted in the native flow');
 
   const {SafetyIncidentsService} = require('../dist/safety/safety-incidents.service.js');
   const booking = await db.booking.create({data: {tripId: replacementTrip.id, accountId: other.id, organizationId: reportingCenter.id}});

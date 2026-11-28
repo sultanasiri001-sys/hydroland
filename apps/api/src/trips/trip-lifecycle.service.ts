@@ -1,3 +1,4 @@
+import { requireAccountedReturn } from './trip-return.service';
 import { boatBookingInclude, isBoatTrip, requireCenterBoat } from './center-boat-booking';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Trip } from '@prisma/client';
@@ -142,6 +143,7 @@ export class TripLifecycleService {
         if (!value || value.currency !== 'SAR' || !Number.isSafeInteger(value.pricePerSeatMinor) || Number(value.pricePerSeatMinor) < 0) throw new ConflictException('حدد سعر الرحلة قبل فتح الحجز.');
       }
       let createdDiveLogs = 0;
+      let returnEvidence: Awaited<ReturnType<typeof requireAccountedReturn>> | null = null;
       const attendedIds = command.action === 'COMPLETE' ? input.attendedParticipantIds as string[] : [];
       const reviewIssues: string[] = [];
       if (command.action === 'COMPLETE') {
@@ -158,6 +160,7 @@ export class TripLifecycleService {
         const participation = applyParticipationPolicy(await Promise.all(attending.map(async participant => (await evaluateParticipation(tx, 'BOOKING_PARTICIPANT', participant.id)).readiness)), eligibility);
         if (!participation.ready) throw new ConflictException({ code: 'PARTICIPATION_NOT_CLEARED', message: 'راجع مصادر موافقة وأهلية المشاركين قبل إكمال الرحلة.', reasons: participation.blockers });
         reviewIssues.push(...participation.issues);
+        returnEvidence = await requireAccountedReturn(tx, tripId, attendedIds);
         // Deliberately no certification/verification: dive logs remain pending their separate review workflow.
         for (const participant of attending) {
           if (await tx.diveLog.findFirst({ where: { sourceTripId: tripId, sourceParticipantId: participant.id } })) throw new ConflictException('يوجد سجل غوص سابق لهذا المشارك؛ يلزم مراجعة السجل قبل الإنهاء.');
@@ -182,7 +185,7 @@ export class TripLifecycleService {
         for (const recipient of recipients) await tx.notification.create({ data: { accountId: recipient, type: command.action === 'CANCEL' ? 'TRIP_CANCELLED' : 'TRIP_COMPLETED', status: 'SENT', sentAt: updatedAt, payload: { tripId, title: trip.title, status: nextStatus, financialActionExecuted: false, message: command.action === 'CANCEL' ? 'أُلغيت الرحلة. تُراجع أي مبالغ مدفوعة عبر الإجراءات المالية؛ لم يُنفّذ استرداد تلقائي.' : 'اكتمل تسجيل الرحلة. أُلغيت الحجوزات غير المؤكدة، وأُرسلت سجلات الغوص للحاضرين للمراجعة. لم يُنفّذ استرداد تلقائي.' } } });
       }
       const result = { trip: { id: tripId, status: nextStatus, updatedAt: updatedAt.toISOString() }, cancelledBookings: cancelled.length, createdDiveLogs, attendedParticipants: attendedIds.length, absentParticipants: command.action === 'COMPLETE' ? state.participants.length - attendedIds.length : 0, releasedCalendarResources, financialActionExecuted: false, alreadyApplied: false };
-      await this.audit.record({ actorId: accountId, action: command.action === 'COMPLETE' ? 'TRIP_COMPLETED' : 'TRIP_STATUS_CHANGED', resource: 'Trip', resourceId: tripId, metadata: { actorAccountId: accountId, source: mode, requestId: command.requestId, fingerprint, previousStatus: trip.status, status: nextStatus, reason: command.reason, attendedParticipantIds: attendedIds, absentParticipantIds: command.action === 'COMPLETE' ? state.participants.filter(p => !attendedIds.includes(p.id)).map(p => p.id) : [], ...result, cancelledBookingIds: cancelled.map(b => b.id), financial: state.financial, operationalClearanceEventId: operational?.clearance.id ?? null, policyReview: { required: reviewIssues.length > 0, issues: reviewIssues }, result } }, tx);
+      await this.audit.record({ actorId: accountId, action: command.action === 'COMPLETE' ? 'TRIP_COMPLETED' : 'TRIP_STATUS_CHANGED', resource: 'Trip', resourceId: tripId, metadata: { actorAccountId: accountId, source: mode, requestId: command.requestId, fingerprint, previousStatus: trip.status, status: nextStatus, reason: command.reason, attendedParticipantIds: attendedIds, absentParticipantIds: command.action === 'COMPLETE' ? state.participants.filter(p => !attendedIds.includes(p.id)).map(p => p.id) : [], ...result, cancelledBookingIds: cancelled.map(b => b.id), financial: state.financial, operationalClearanceEventId: operational?.clearance.id ?? null, returnEvidence, policyReview: { required: reviewIssues.length > 0, issues: reviewIssues }, result } }, tx);
       return result;
     });
   }

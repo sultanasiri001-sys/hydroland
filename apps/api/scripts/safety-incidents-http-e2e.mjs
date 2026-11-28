@@ -1,5 +1,5 @@
 import {PrismaClient} from '@prisma/client';
-import {createHmac} from 'node:crypto';
+import {createHmac,randomUUID} from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.SAFETY_INCIDENTS_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -30,9 +30,9 @@ try{
  response=await fetch(base+'/safety/incidents/admin',{headers:headers(reporterToken)});if(response.status!==403)throw new Error('Non-admin incident queue expected 403, got '+response.status);
  const queue=await expectOk(await fetch(base+'/safety/incidents/admin',{headers:headers(adminToken)}));if(!Array.isArray(queue)||!queue.some(item=>item.id===incidentId&&item.reportedBy?.id===reporter.id))throw new Error('Admin incident queue missing reporter evidence');
  response=await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(reporterToken),body:JSON.stringify({status:'UNDER_REVIEW'})});if(response.status!==403)throw new Error('Reporter status decision expected 403, got '+response.status);
- const reviewing=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'UNDER_REVIEW',resolutionNotes:'تم توجيه البلاغ للفحص الفني'})}));if(reviewing.status!=='UNDER_REVIEW'||reviewing.resolvedAt)throw new Error('Under-review incident decision did not persist');
+ const reviewing=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({requestId:randomUUID(),expectedUpdatedAt:created.updatedAt,status:'UNDER_REVIEW',resolutionNotes:'تم توجيه البلاغ للفحص الفني'})}));if(reviewing.status!=='UNDER_REVIEW'||reviewing.resolvedAt)throw new Error('Under-review incident decision did not persist');
  response=await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'RESOLVED'})});if(response.status!==400)throw new Error('Resolution without notes expected 400, got '+response.status);
- const resolved=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'RESOLVED',resolutionNotes:'تم عزل المصدر وإكمال فحص المحرك قبل التشغيل.'})}));if(resolved.status!=='RESOLVED'||resolved.resolvedByAccountId!==admin.id||!resolved.resolvedAt)throw new Error('Resolved incident did not persist resolver evidence');
+ const resolved=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({requestId:randomUUID(),expectedUpdatedAt:reviewing.updatedAt,status:'RESOLVED',resolutionNotes:'تم التحقق من معالجة الحالة الاصطناعية داخل الاختبار فقط.',capaRequired:false,applicabilityReason:'حالة اختبار اصطناعية معزولة قرر المراجع المستقل عدم انطباق CAPA عليها؛ لا تدعي فحص محرك حقيقي أو تصريح تشغيل.'})}));if(resolved.status!=='RESOLVED'||resolved.resolvedByAccountId!==admin.id||!resolved.resolvedAt)throw new Error('Resolved incident did not persist resolver evidence');
  console.log('Phase 7 internal emergency HTTP/DB E2E passed: CRITICAL distress record, caller coordinates, explicit no-external-transmission boundary, reporter isolation, admin review and evidenced resolution.');
 }finally{
  if(incidentId)await db.safetyIncident.deleteMany({where:{id:incidentId}}).catch(()=>{});
