@@ -926,6 +926,7 @@ jobs:
       - name: HR HTTP/DB E2E
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
           D03_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
           PORT: 3101
@@ -948,6 +949,9 @@ jobs:
           MOYASAR_API_BASE_URL: http://127.0.0.1:3197/v1/
           HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4173
         run: |
+          # Preserve the canonical isolated fixture in a named GitHub database
+          # accepted by the provider, participation and crew fixture guards.
+          psql postgresql://hydroland:hydroland@localhost:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_d03_hr_http_test_availability_ci TEMPLATE hydroland'
           node apps/api/scripts/provider-read-fixture.mjs > /tmp/d03-provider.env
           node --env-file=/tmp/d03-provider.env apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
@@ -1048,11 +1052,14 @@ jobs:
           fi
 
       - name: Phase 4 append-only audit database boundary
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
         run: node apps/api/scripts/audit-append-only-validation.mjs
 
       - name: Rental and trip operational-clearance checks on UTC and Riyadh database connections
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_d03_hr_http_test_availability_ci
           PORT: 3111
           JWT_SECRET: disposable-test-secret-for-rental-deadlines
           EQUIPMENT_E2E_BASE_URL: http://127.0.0.1:3111/api/v1
