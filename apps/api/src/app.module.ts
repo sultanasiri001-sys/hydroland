@@ -1,3 +1,4 @@
+import { PrivacyModule } from './privacy/privacy.module';
 import { ServiceImagesModule } from './service-images/service-images.module';
 import { Module } from '@nestjs/common';
 import { AdminModule } from './admin/admin.module';
@@ -43,7 +44,7 @@ import { StaffingAdminModule } from './hr/staffing-admin.module';
 import { DocumentFormModule } from './document-forms/document-form.module';
 
 @Module({
-  imports: [ParticipationModule, ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
+  imports: [PrivacyModule, ParticipationModule, ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,

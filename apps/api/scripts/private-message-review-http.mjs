@@ -1,3 +1,4 @@
+import { privacyPurgeTestFixture } from './privacy-purge-test-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID, createHmac } from 'node:crypto';
 import { DatabaseService } from '../dist/database/database.service.js';
@@ -11,7 +12,7 @@ assert.equal(base.hostname,'127.0.0.1');
 assert.equal(url.pathname,'/a15test');
 assert.equal(process.env.NODE_ENV,'test');
 const db = new DatabaseService();
-const review = new PrivateMessageReviewService(db,new AuditService(db));
+const purgeFixture=await privacyPurgeTestFixture(db),review=purgeFixture.review;
 const suffix=randomUUID();
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
 async function account(name,admin=false) {
@@ -73,4 +74,4 @@ try{
   await call(owner,endpoint+'/message-evidence',undefined,404);
   await review.purgeExpired();assert.equal(await exists(b.id),0);
   console.log('PASS: withdrawal hidden on both histories, preview and export; 30-day boundary; case-scoped access, audit, two-person release and purge.');
-} finally { await db.$disconnect(); }
+} finally { await purgeFixture.close(); await db.$disconnect(); }

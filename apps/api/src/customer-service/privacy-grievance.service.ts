@@ -6,6 +6,7 @@ import { HYDROLAND_DEPARTMENTS } from '../governance/department-ownership.domain
 import { platformOrganization } from '../hr/staffing-catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 
+import { verifyErasureExecution } from '../privacy/privacy-erasure-proof';
 import { reviewTripRecordRetention } from './trip-record-retention-review';
 
 type Tx = Prisma.TransactionClient;
@@ -94,10 +95,12 @@ export class PrivacyGrievanceService {
       const rows = await tx.privacyGrievance.findMany({ where:{ OR:[{ customerId:actor }, { organizationId:{ in:managedIds } },
         { departmentCode:{ in:departments }, escalatedAt:{ not:null } }] }, orderBy:[{ createdAt:'desc' }, { id:'asc' }], skip:(page-1)*25, take:26,
         select:{ id:true, customerId:true, organizationId:true, organization:{ select:{ displayName:true } }, departmentCode:true, description:true,
-          personalDataRequestId:true,personalDataRequest:{select:{decisionDisposition:true,initialDisposition:true,executionAuditId:true}},decisionPersonId:true,appealedAt:true,firstOutcome:true,appealReason:true,state:true, createdAt:true, dueAt:true, escalatedAt:true, centerAction:true, outcome:true } });
+          personalDataRequestId:true,personalDataRequest:{select:{kind:true,domain:true,decisionDisposition:true,initialDisposition:true,executionAuditId:true}},decisionPersonId:true,appealedAt:true,firstOutcome:true,appealReason:true,state:true, createdAt:true, dueAt:true, escalatedAt:true, centerAction:true, outcome:true } });
       const identity=await tx.account.findUniqueOrThrow({where:{id:actor},select:{personId:true}});
-      return { centers, topics, page, more:rows.length>25, items:rows.slice(0,25).map(({customerId, organizationId, decisionPersonId, personalDataRequest, ...item}) => ({
-        ...item, disposition:personalDataRequest?.decisionDisposition, firstDisposition:personalDataRequest?.initialDisposition, hasExecutionProof:!!personalDataRequest?.executionAuditId, mine:customerId===actor, canAppeal:customerId===actor && !!item.personalDataRequestId && !!decisionPersonId && !item.appealedAt && item.state==='RESOLVED', canCenter:customerId!==actor && managedIds.includes(organizationId) && (item.state==='CENTER_HANDLING' || item.state==='CENTER_PENDING' && item.dueAt>new Date()),
+      const platform=await platformOrganization(tx);
+      const canActivateRetention=platform?.ownerId===actor&&!!await tx.roleAssignment.count({where:{accountId:actor,role:'ADMIN',status:'ACTIVE'}});
+      return { centers, topics, page, canActivateRetention, more:rows.length>25, items:rows.slice(0,25).map(({customerId, organizationId, decisionPersonId, personalDataRequest, ...item}) => ({
+        ...item, canManageHolds:personalDataRequest?.kind==='ERASURE'&&item.state==='RESOLVED'&&customerId!==actor&&(!item.appealedAt||decisionPersonId!==identity.personId)&&((!item.escalatedAt&&managedIds.includes(organizationId))||(!!item.escalatedAt&&departments.includes(item.departmentCode))), requestKind:personalDataRequest?.kind??null, requestDomain:personalDataRequest?.domain??null, disposition:personalDataRequest?.decisionDisposition, firstDisposition:personalDataRequest?.initialDisposition, hasExecutionProof:!!personalDataRequest?.executionAuditId, mine:customerId===actor, canAppeal:customerId===actor && !!item.personalDataRequestId && !!decisionPersonId && !item.appealedAt && item.state==='RESOLVED', canCenter:customerId!==actor && managedIds.includes(organizationId) && (item.state==='CENTER_HANDLING' || item.state==='CENTER_PENDING' && item.dueAt>new Date()),
         canDepartment:customerId!==actor && decisionPersonId!==identity.personId && item.state==='DEPARTMENT_PENDING' && departments.includes(item.departmentCode),
       })) };
     });
@@ -184,13 +187,15 @@ export class PrivacyGrievanceService {
       if (department ? row.state!=='DEPARTMENT_PENDING' : !(row.state==='CENTER_HANDLING' || row.state==='CENTER_PENDING' && now<row.dueAt)) throw new ConflictException('تغيرت مرحلة الطلب. حدّث القائمة.');
       const linkedDecision = row.personalDataRequestId && action!=='CENTER_HANDLE';
       const disposition = body.disposition;
-      const retentionReview = linkedDecision && row.personalDataRequest
+      const retentionReview = linkedDecision && row.personalDataRequest?.kind==='ERASURE' && disposition==='APPLIED'
+        ? await verifyErasureExecution(tx,row.personalDataRequestId!,row.customerId,row.personalDataRequest.domain,row.personalDataRequest.recordRef)
+        : linkedDecision && row.personalDataRequest
         ? await reviewTripRecordRetention(tx, row.personalDataRequest, { accountId: row.customerId, centerId: row.organizationId })
         : undefined;
       if (linkedDecision) {
         if (disposition!=='APPLIED' && disposition!=='DEFERRED' && disposition!=='REFUSED')
           throw new BadRequestException('حدد ما نُفذ أو أُجّل أو رُفض مع بيان السبب.');
-        if (disposition==='APPLIED') {
+        if (disposition==='APPLIED' && row.personalDataRequest?.kind!=='ERASURE') {
           if (row.personalDataRequest?.kind !== 'CORRECTION' || row.personalDataRequest.domain !== 'ACCOUNT')
             throw new ConflictException('يلزم إثبات تنفيذ مطابق لنوع الطلب وسجله.');
           const proofId=row.personalDataRequest.executionAuditId;

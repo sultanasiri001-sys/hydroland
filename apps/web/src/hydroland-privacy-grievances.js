@@ -20,8 +20,8 @@
     CENTER_PENDING: ['عند المركز','With the center'], CENTER_HANDLING: ['المركز يعالج الطلب','Center is handling the request'],
     DEPARTMENT_PENDING: ['عند الإدارة المختصة','With the department'], RESOLVED: ['تمت المعالجة','Resolved']
   };
-  const api = async (path, body) => {
-    const response = await window.HydrolandAuth.authorizedFetch('/privacy/grievances'+path,
+  const api = async (path, body, namespace='/privacy/grievances') => {
+    const response = await window.HydrolandAuth.authorizedFetch(namespace+path,
       body === undefined ? {} : {method:'POST', headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const data = await response.json();
     if (!response.ok) throw Error(data.message || localized('تعذّر تنفيذ الطلب','Request failed'));
@@ -71,6 +71,122 @@
       for(const item of items) node.add(new Option(name(item),item[id]));
       return node;
     };
+    function retentionControls(version) {
+      const section=element('section'),body=element('div');
+      section.dataset.retentionActivation='';
+      const inspect=button(localized('إدارة نفاذ مدد الاحتفاظ','Manage retention effective date'),async()=>{
+        if(inspect.disabled)return;
+        inspect.disabled=true;
+        try {
+          const data=await api('',undefined,'/privacy/retention-activation');
+          if(active!==dialog || revision!==version || !section.isConnected)return;
+          body.replaceChildren();
+          if(!data.canActivate)return;
+          body.append(element('p',localized('تبدأ مدد الاحتفاظ عند اكتمال العمل التقني وتثبيت قرار النفاذ المعتمد. يبقى الحذف مرتبطًا بقرار كل سجل وموانع الاحتفاظ الخاصة به.',
+            'Retention periods become effective after technical completion and an approved effective-date decision. Erasure still requires each record’s disposition and retention checks.')));
+          if(data.effectiveFrom) {
+            const date=new Date(data.effectiveFrom).toLocaleString(document.documentElement.lang||'ar');
+            body.append(element('p',localized('تاريخ النفاذ المعتمد: ','Approved effective date: ')+date));
+          } else {
+            const sources=Array.isArray(data.sources)?data.sources:[];
+            if(sources.length) {
+              const choices=select(sources.map((item,index)=>({...item,key:String(index)})),'key',item=>item.label);
+              const confirm=element('input');confirm.type='checkbox';confirm.required=true;
+              body.append(form([
+                label(localized('قرار نفاذ مدد الاحتفاظ','Retention effective-date decision'),choices),
+                label(localized('أؤكد اكتمال العمل التقني ومطابقة قرار النفاذ المختار.','I confirm technical completion and the selected effective-date decision.'),confirm)
+              ],localized('تثبيت قرار النفاذ','Record effective-date decision'),async()=>{
+                const selected=choices.value===''?null:sources[Number(choices.value)];
+                if(!selected || !confirm.checked)throw Error(localized('اختر القرار وأكد مراجعتك.','Select the decision and confirm your review.'));
+                await api('',{source:selected.source},'/privacy/retention-activation');
+              }));
+            } else body.append(element('p',localized('لا يوجد قرار نفاذ معتمد متاح. جهّز مستنده وأكمل مراجعته المستقلة في المستندات.',
+              'There is no approved effective-date decision available. Prepare its document and complete its independent review in Documents.')));
+          }
+          if(!data.templatesReady)body.append(form([],localized('تجهيز نماذج الاحتفاظ والتصرف','Prepare retention and disposition templates'),
+            ()=>api('',{confirmed:true},'/privacy/retention-templates')));
+          const dispositions=(Array.isArray(data.dispositionSources)?data.dispositionSources:[]).filter(item=>!item.authorized);
+          if(dispositions.length) {
+            const choices=select(dispositions.map((item,index)=>({...item,key:String(index)})),'key',item=>item.label);
+            const confirm=element('input');confirm.type='checkbox';confirm.required=true;
+            body.append(element('h3',localized('اعتماد ربط قرار التصرف','Authorize a disposition')),
+              element('p',localized('ربط القرار يتيح مراجعته مع الطلب المطابق. تنفيذ الحذف خطوة مستقلة تخضع لموانع الاحتفاظ والتجميد.',
+                'Binding a decision makes it available for its matching request. Erasure is a separate action subject to retention restrictions and holds.')),
+              form([
+                label(localized('قرار التصرف بعد المراجعة المستقلة','Independently reviewed disposition'),choices),
+                label(localized('أؤكد ربط القرار المعتمد بالسجل المحدد بعد المراجعة المستقلة.','I confirm binding the independently reviewed decision to its specified record.'),confirm)
+              ],localized('ربط قرار التصرف','Bind disposition decision'),async()=>{
+                const selected=choices.value===''?null:dispositions[Number(choices.value)];
+                if(!selected || !confirm.checked)throw Error(localized('اختر القرار وأكد مراجعتك.','Select the decision and confirm your review.'));
+                await api('',{source:selected.source},'/privacy/retention-dispositions');
+              }));
+          }
+        } catch(error) {if(active===dialog && revision===version)status.textContent=error.message;}
+        finally {if(inspect.isConnected)inspect.disabled=false;}
+      });
+      section.append(inspect,body);content.append(section);
+    }
+    function erasureControls(section,row,version) {
+      const box=element('div'), body=element('div');
+      box.dataset.erasureControls='';
+      const inspect=button(localized('قرارات الحذف والتجميد','Erasure decisions and holds'),async()=>{
+        if(inspect.disabled)return;
+        inspect.disabled=true;
+        try {
+          const data=await api('/'+encodeURIComponent(row.id)+'/erasure-options');
+          if(active!==dialog || revision!==version || !box.isConnected)return;
+          body.replaceChildren();
+          const canRecordHold=row.canCenter || row.canDepartment;
+          body.append(element('p',localized('يرتبط التنفيذ بالسجل المحدد وقرار التصرف المعتمد. يُمنع عند وجود تجميد أو التزام احتفاظ قائم.',
+            'Execution is bound to the selected record and its approved disposition. Active holds and retention obligations prevent erasure.')));
+          const sources=Array.isArray(data.sources)?data.sources:[], holds=Array.isArray(data.holds)?data.holds:[];
+          if(!canRecordHold)body.append(element('p',localized('الطلب مغلق. يمكن رفع التجميد بعد تأكيد مراجعين مخولين.',
+            'This request is closed. Holds may be released after two authorized reviewers confirm.')));
+          else if(!data.enabled)body.append(element('p',localized('تنفيذ الحذف غير مفعّل. يمكن مراجعة الطلب وتسجيل التجميد.',
+            'Erasure is not enabled. You can review the request and record a hold.')));
+          if(canRecordHold && !sources.length)body.append(element('p',localized('لا يوجد قرار تصرف معتمد مطابق لهذا الطلب. أكمل مراجعة المستند قبل التنفيذ.',
+            'There is no matching approved disposition for this request. Complete the document review before execution.')));
+          if(canRecordHold && data.enabled && sources.length) {
+            const choices=select(sources.map((item,index)=>({...item,key:String(index)})),'key',item=>item.label);
+            const confirm=element('input');confirm.type='checkbox';confirm.required=true;
+            let operationId=crypto.randomUUID();
+            choices.addEventListener('change',()=>{operationId=crypto.randomUUID();confirm.checked=false;});
+            body.append(form([
+              label(localized('قرار التصرف المعتمد','Approved disposition'),choices),
+              label(localized('أؤكد تنفيذ الحذف المحدد في القرار بعد مراجعة موانع الاحتفاظ.','I confirm the erasure specified by this decision after reviewing retention restrictions.'),confirm)
+            ],localized('تنفيذ الحذف المعتمد','Execute approved erasure'),async()=>{
+              const selected=choices.value===''?null:sources[Number(choices.value)];
+              if(!selected || !confirm.checked)throw Error(localized('اختر القرار وأكد مراجعتك.','Select the decision and confirm your review.'));
+              const result=await api('/'+encodeURIComponent(row.id)+'/erasure',{operationId,source:selected.source});
+              if(result.executed!==true || result.externalReceiptSaved!==true)throw Error(localized('لم يكتمل إثبات التنفيذ. حدّث الطلب قبل تسجيل النتيجة.','Execution evidence is incomplete. Refresh the request before recording its outcome.'));
+            }));
+          }
+          if(canRecordHold) {
+            const reason=textarea();reason.minLength=5;reason.maxLength=1000;
+            const domain=element('input');domain.type='checkbox';
+            body.append(form([
+              label(localized('سبب تجميد الحذف','Reason for the erasure hold'),reason),
+              label(localized('يشمل جميع سجلات العضو في نطاق هذا الطلب','Apply to all of this member’s records in this request domain'),domain)
+            ],localized('تسجيل تجميد','Record hold'),()=>api('/'+encodeURIComponent(row.id)+'/retention-holds',{reason:reason.value,entireDomain:domain.checked})));
+          }
+          for(const hold of holds) {
+            const item=element('div');
+            item.append(element('p',hold.reason));
+            if(hold.releasePending && !hold.canConfirmRelease) {
+              item.append(element('p',localized('طلب رفع التجميد ينتظر تأكيد مراجع آخر.','The release request is awaiting another reviewer’s confirmation.')));
+            } else {
+              const releaseReason=textarea();releaseReason.minLength=5;releaseReason.maxLength=1000;
+              item.append(form([label(localized('سبب رفع التجميد','Reason for releasing the hold'),releaseReason)],
+                hold.releasePending?localized('تأكيد رفع التجميد','Confirm hold release'):localized('طلب رفع التجميد','Request hold release'),
+                ()=>api('/'+encodeURIComponent(row.id)+'/retention-holds/'+encodeURIComponent(hold.id)+'/release',{reason:releaseReason.value})));
+            }
+            body.append(item);
+          }
+        } catch(error) {if(active===dialog && revision===version)status.textContent=error.message;}
+        finally {if(inspect.isConnected)inspect.disabled=false;}
+      });
+      box.append(inspect,body);section.append(box);
+    }
     async function load(message='') {
       const version=++revision;
       status.textContent=localized('جارٍ التحميل…','Loading…');
@@ -78,6 +194,7 @@
         const data=await api('?page='+page);
         if(active!==dialog || revision!==version) return;
         content.replaceChildren();
+        if(data.canActivateRetention===true)retentionControls(version);
         if(data.centers.length) {
           const centers=select(data.centers,'id',x=>x.displayName),topics=select(data.topics,'domain',x=>localized(x.ar,x.en)),description=textarea();
           const key=crypto.randomUUID();
@@ -105,6 +222,8 @@
           if(row.centerAction) section.append(element('p',row.centerAction));
           if(row.outcome) section.append(element('p',localized('نتيجة المعالجة','Outcome')+' · '+row.outcome));
           const act=(action,fields)=>api('/'+encodeURIComponent(row.id)+'/actions',{action,...fields});
+          if(row.requestKind==='ERASURE' && ((!row.hasExecutionProof && (row.canCenter || row.canDepartment)) || row.canManageHolds===true))
+            erasureControls(section,row,version);
           if(row.canCenter || row.canDepartment) {
             const result=textarea(),fields=[label(localized('النتيجة التي ستصل للمشترك والمركز','Outcome for the member and center'),result)];
             const choice=element('select');

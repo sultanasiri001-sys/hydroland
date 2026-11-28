@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { exportRetentionPolicy } from '../profile/export-retention-policy';
+import { retentionPolicyForExport } from '../privacy/retention-source';
 
 type RequestScope = { kind: string; domain: string; recordRef: string | null };
 type ReviewScope = { accountId: string; centerId: string };
@@ -20,7 +20,7 @@ export async function reviewTripRecordRetention(
   scope: ReviewScope,
 ) {
   if (request.kind !== 'ERASURE' || (request.domain !== 'BOOKINGS' && request.domain !== 'PAYMENTS')) return;
-  const policy = exportRetentionPolicy(request.domain);
+  const policy = await retentionPolicyForExport(tx, request.domain);
   const basis = {
     domain: request.domain,
     policyVersion: policy.version,

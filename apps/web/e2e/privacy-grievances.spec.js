@@ -14,7 +14,7 @@ const row=extra=>({
 });
 
 async function install(page,options={}){
-  const state={items:[],centers:[],writes:[],reads:0,readResponses:0,holdRead:false,
+  const state={items:[],centers:[],writes:[],reads:0,readResponses:0,holdRead:false,erasureReads:0,
     holdWrite:false,failWrite:false,role:'DIVER',locale:'ar',...options};
   await page.setViewportSize({width:state.locale==='en'?1280:390,height:844});
   await page.route('**/api/v1/**',route=>json(route,[]));
@@ -24,13 +24,29 @@ async function install(page,options={}){
     person:{firstName:'عضو',lastName:'اختبار'},roleAssignments:[{role:state.role,status:'ACTIVE'}]
   }));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+  await page.route(/\/api\/v1\/privacy\/retention-(activation|templates|dispositions)$/,route=>{
+    const request=route.request(),path=new URL(request.url()).pathname;
+    expect(request.headers().authorization).toBe('Bearer grievance-access');
+    if(request.method()==='GET')return json(route,state.retentionActivation);
+    const body=request.postDataJSON();state.writes.push({path,body});
+    if(path.endsWith('templates'))state.retentionActivation.templatesReady=true;
+    else if(path.endsWith('dispositions'))state.retentionActivation.dispositionSources.find(item=>item.source.documentId===body.source.documentId).authorized=true;
+    else state.retentionActivation.effectiveFrom='2026-11-28T03:00:00.000Z';
+    return json(route,{saved:true},201);
+  });
   await page.route(/\/api\/v1\/privacy\/grievances(?:\/[^?]*)?(?:\?.*)?$/,async route=>{
     const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1/privacy/grievances','');
     expect(request.headers().authorization).toBe('Bearer grievance-access');
     if(request.method()==='GET'){
+      if(path.endsWith('/erasure-options')){
+        state.erasureReads++;
+        expect(path).toBe('/grievance-original/erasure-options');
+        if(state.holdErasureRead)await new Promise(resolve=>{state.releaseErasureRead=resolve;});
+        return json(route,state.erasureOptions);
+      }
       expect(path).toBe('');expect(new URL(request.url()).searchParams.get('page')).toBe('1');
       state.reads++;
-      const response=structuredClone({centers:state.centers,topics:[{domain:'payments',ar:'بيانات المدفوعات',en:'Payment data'}],items:state.items,more:false});
+      const response=structuredClone({centers:state.centers,topics:[{domain:'payments',ar:'بيانات المدفوعات',en:'Payment data'}],items:state.items,more:false,canActivateRetention:state.canActivateRetention===true});
       if(state.holdRead)await new Promise(resolve=>{state.releaseRead=resolve;});
       try{await json(route,response);}finally{state.readResponses++;}
       return;
@@ -47,7 +63,13 @@ async function install(page,options={}){
       const [,id,action]=path.split('/');
       saved=state.items.find(item=>item.id===decodeURIComponent(id));
       expect(saved,'Action must keep the selected native case identifier').toBeTruthy();
-      if(action==='appeal'){
+      if(action==='erasure'){
+        if(state.incompleteErasure)return json(route,{executed:true,externalReceiptSaved:false},201);
+        saved.hasExecutionProof=true;
+        return json(route,{executed:true,externalReceiptSaved:true},201);
+      }else if(action==='retention-holds'){
+        return json(route,{id:'hold-original',held:true},201);
+      }else if(action==='appeal'){
         saved.state='DEPARTMENT_PENDING';saved.canAppeal=false;saved.appealReason=body.reason;
       }else{
         expect(action).toBe('actions');
@@ -174,4 +196,139 @@ test('logout closes the grievance panel and rejects a late private list response
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await expect(page.locator('body')).not.toContainText('PRIVATE-LATE-GRIEVANCE');
   await expect(panel(page)).toHaveCount(0);expect(state.writes).toEqual([]);
+});
+
+const erasureSource={documentId:'approved-disposition-original',version:3,contentHash:'sha256:'+'a'.repeat(64),sourceHash:'b'.repeat(64)};
+const erasureItem=()=>row({personalDataRequestId:'request-to-erase',requestKind:'ERASURE',requestDomain:'BOOKINGS',canCenter:true});
+
+test('erasure uses the chosen approved source and preserves the operation key on retry',async({page})=>{
+  const state=await install(page,{role:'DIVE_CENTER',items:[erasureItem()],failWrite:true,
+    erasureOptions:{enabled:true,sources:[{label:'قرار التصرف ٣',source:erasureSource}],holds:[]}});
+  const item=record(page);
+  await item.getByRole('button',{name:'قرارات الحذف والتجميد'}).click();
+  await item.getByRole('combobox',{name:'قرار التصرف المعتمد',exact:true}).selectOption('0');
+  await item.getByLabel('أؤكد تنفيذ الحذف المحدد في القرار بعد مراجعة موانع الاحتفاظ.').check();
+  await item.getByRole('button',{name:'تنفيذ الحذف المعتمد'}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تعذّر الحفظ في هذا الاختبار');
+  await expect(item.locator('option[value="APPLIED"]')).toHaveCount(0);
+  await item.getByRole('button',{name:'تنفيذ الحذف المعتمد'}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تم حفظ الإجراء.');
+  expect(state.writes).toHaveLength(2);expect(state.writes[1]).toEqual(state.writes[0]);
+  expect(state.writes[0]).toEqual({path:'/grievance-original/erasure',body:{source:erasureSource,operationId:expect.stringMatching(/^[0-9a-f-]{36}$/)}});
+  await expect(item.locator('option[value="APPLIED"]')).toHaveCount(1);
+  await expect(item.locator('[data-erasure-controls]')).toHaveCount(0);
+  await expect(panel(page)).not.toContainText(erasureSource.contentHash);
+});
+
+test('unpublished erasure receipt cannot appear as completed execution',async({page})=>{
+  const state=await install(page,{role:'DIVE_CENTER',items:[erasureItem()],incompleteErasure:true,
+    erasureOptions:{enabled:true,sources:[{label:'قرار معتمد',source:erasureSource}],holds:[]}});
+  const item=record(page);
+  await item.getByRole('button',{name:'قرارات الحذف والتجميد'}).click();
+  await item.getByRole('combobox',{name:'قرار التصرف المعتمد',exact:true}).selectOption('0');
+  await item.getByLabel('أؤكد تنفيذ الحذف المحدد في القرار بعد مراجعة موانع الاحتفاظ.').check();
+  await item.getByRole('button',{name:'تنفيذ الحذف المعتمد'}).click();
+  await expect(panel(page).getByRole('status')).toContainText('لم يكتمل إثبات التنفيذ');
+  await expect(item.locator('option[value="APPLIED"]')).toHaveCount(0);
+  expect(state.reads).toBe(1);
+});
+
+test('inactive erasure still permits a scoped hold and prevents self-confirmation of its release',async({page})=>{
+  const state=await install(page,{role:'DIVE_CENTER',items:[erasureItem()],erasureOptions:{enabled:false,sources:[],
+    holds:[{id:'existing-hold',reason:'بلاغ مفتوح يحتاج حفظ السجل',releasePending:true,canConfirmRelease:false}]}});
+  const item=record(page);
+  await item.getByRole('button',{name:'قرارات الحذف والتجميد'}).click();
+  await expect(item).toContainText('تنفيذ الحذف غير مفعّل');
+  await expect(item.getByRole('button',{name:'تنفيذ الحذف المعتمد'})).toHaveCount(0);
+  await expect(item).toContainText('طلب رفع التجميد ينتظر تأكيد مراجع آخر');
+  await expect(item.getByRole('button',{name:'تأكيد رفع التجميد'})).toHaveCount(0);
+  await item.getByLabel('سبب تجميد الحذف').fill('مطالبة قائمة تتطلب حفظ السجل');
+  await item.getByRole('button',{name:'تسجيل تجميد',exact:true}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تم حفظ الإجراء.');
+  expect(state.writes).toEqual([{path:'/grievance-original/retention-holds',body:{reason:'مطالبة قائمة تتطلب حفظ السجل',entireDomain:false}}]);
+});
+
+test('late erasure options are discarded after the account session ends',async({page})=>{
+  const state=await install(page,{role:'DIVE_CENTER',items:[erasureItem()],holdErasureRead:true,
+    erasureOptions:{enabled:true,sources:[{label:'PRIVATE-LATE-ERASURE-DECISION',source:erasureSource}],holds:[]}});
+  await record(page).getByRole('button',{name:'قرارات الحذف والتجميد'}).click();
+  await expect.poll(()=>Boolean(state.releaseErasureRead)).toBe(true);
+  await page.evaluate(()=>window.HydrolandAuth.terminateSession());
+  state.releaseErasureRead();
+  await expect(panel(page)).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText('PRIVATE-LATE-ERASURE-DECISION');
+  expect(state.writes).toEqual([]);
+});
+
+test('owner prepares empty retention templates without recording an effective date',async({page})=>{
+  const state=await install(page,{role:'ADMIN',canActivateRetention:true,
+    retentionActivation:{canActivate:true,templatesReady:false,effectiveFrom:null,sources:[]}});
+  const section=panel(page).locator('[data-retention-activation]');
+  await section.getByRole('button',{name:'إدارة نفاذ مدد الاحتفاظ'}).click();
+  await expect(section).toContainText('لا يوجد قرار نفاذ معتمد متاح');
+  await expect(section.getByRole('button',{name:'تثبيت قرار النفاذ',exact:true})).toHaveCount(0);
+  await section.getByRole('button',{name:'تجهيز نماذج الاحتفاظ والتصرف'}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تم حفظ الإجراء.');
+  expect(state.writes).toEqual([{path:'/api/v1/privacy/retention-templates',body:{confirmed:true}}]);
+  expect(state.retentionActivation.effectiveFrom).toBeNull();
+  await section.getByRole('button',{name:'إدارة نفاذ مدد الاحتفاظ'}).click();
+  await expect(section.getByRole('button',{name:'تجهيز نماذج الاحتفاظ والتصرف'})).toHaveCount(0);
+});
+
+test('owner records only the selected approved retention source after confirming completion',async({page})=>{
+  const source={...erasureSource,documentId:'approved-activation-source'};
+  const state=await install(page,{role:'ADMIN',locale:'en',canActivateRetention:true,
+    retentionActivation:{canActivate:true,templatesReady:true,effectiveFrom:null,sources:[{label:'Approved activation 2026',source}]}});
+  const section=panel(page).locator('[data-retention-activation]');
+  await section.getByRole('button',{name:'Manage retention effective date'}).click();
+  await section.getByRole('combobox',{name:'Retention effective-date decision',exact:true}).selectOption('0');
+  await section.getByLabel('I confirm technical completion and the selected effective-date decision.').check();
+  await section.getByRole('button',{name:'Record effective-date decision'}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('Saved.');
+  expect(state.writes).toEqual([{path:'/api/v1/privacy/retention-activation',body:{source}}]);
+  await section.getByRole('button',{name:'Manage retention effective date'}).click();
+  await expect(section).toContainText('Approved effective date:');
+  await expect(section.getByRole('button',{name:'Record effective-date decision'})).toHaveCount(0);
+  await expect(section).not.toContainText(source.contentHash);
+});
+
+test('owner binds an independently reviewed disposition without activating or executing erasure',async({page})=>{
+  const previous={...erasureSource,documentId:'already-bound-disposition'};
+  const state=await install(page,{role:'ADMIN',canActivateRetention:true,
+    retentionActivation:{canActivate:true,templatesReady:true,effectiveFrom:null,sources:[],dispositionSources:[
+      {label:'قرار مربوط سابقًا',source:previous,authorized:true},
+      {label:'قرار تصرف بعد المراجعة المستقلة',source:erasureSource,authorized:false}
+    ]}});
+  const section=panel(page).locator('[data-retention-activation]');
+  await section.getByRole('button',{name:'إدارة نفاذ مدد الاحتفاظ'}).click();
+  const choices=section.getByRole('combobox',{name:'قرار التصرف بعد المراجعة المستقلة',exact:true});
+  await expect(choices.locator('option')).toHaveCount(2);
+  await choices.selectOption('0');
+  await section.getByRole('button',{name:'ربط قرار التصرف',exact:true}).click();
+  expect(state.writes).toHaveLength(0);
+  await section.getByLabel('أؤكد ربط القرار المعتمد بالسجل المحدد بعد المراجعة المستقلة.').check();
+  await section.getByRole('button',{name:'ربط قرار التصرف',exact:true}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تم حفظ الإجراء.');
+  expect(state.writes).toEqual([{path:'/api/v1/privacy/retention-dispositions',body:{source:erasureSource}}]);
+  expect(state.retentionActivation.effectiveFrom).toBeNull();
+  await section.getByRole('button',{name:'إدارة نفاذ مدد الاحتفاظ'}).click();
+  await expect(section.getByRole('button',{name:'ربط قرار التصرف',exact:true})).toHaveCount(0);
+  await expect(section).not.toContainText(erasureSource.contentHash);
+});
+
+test('authorized reviewers can release a hold on a closed case without reopening erasure controls',async({page})=>{
+  const state=await install(page,{role:'DIVE_CENTER',items:[row({state:'RESOLVED',requestKind:'ERASURE',
+    personalDataRequestId:'closed-request-with-hold',canManageHolds:true})],erasureOptions:{enabled:false,sources:[],
+    holds:[{id:'existing-hold',reason:'احتفاظ طلبت مراجعته',releasePending:true,canConfirmRelease:true}]}});
+  const item=record(page);
+  await item.getByRole('button',{name:'قرارات الحذف والتجميد'}).click();
+  await expect(item).toContainText('الطلب مغلق');
+  await expect(item.getByRole('button',{name:'تسجيل تجميد',exact:true})).toHaveCount(0);
+  await expect(item.getByRole('button',{name:'تنفيذ الحذف المعتمد'})).toHaveCount(0);
+  await expect(item.getByRole('button',{name:'إنهاء المعالجة وإبلاغ الطرفين'})).toHaveCount(0);
+  await item.getByLabel('سبب رفع التجميد').fill('راجعت زوال سبب الاحتفاظ بصورة مستقلة');
+  await item.getByRole('button',{name:'تأكيد رفع التجميد',exact:true}).click();
+  await expect(panel(page).getByRole('status')).toHaveText('تم حفظ الإجراء.');
+  expect(state.writes).toEqual([{path:'/grievance-original/retention-holds/existing-hold/release',
+    body:{reason:'راجعت زوال سبب الاحتفاظ بصورة مستقلة'}}]);
 });
