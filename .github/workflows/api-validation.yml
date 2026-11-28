@@ -923,6 +923,11 @@ jobs:
         run: node apps/api/scripts/credential-integrity-db-e2e.mjs
       - name: Diver profile production-schema PostgreSQL E2E
         run: node apps/api/scripts/diver-profile-schema-db-e2e.mjs
+      - name: Prepare isolated composite HTTP database
+        run: |
+          # Preserve the canonical isolated fixture in a named GitHub database
+          # accepted by the provider, participation and crew fixture guards.
+          psql postgresql://hydroland:hydroland@localhost:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_d03_hr_http_test_availability_ci TEMPLATE hydroland'
       - name: HR HTTP/DB E2E
         env:
           NODE_ENV: test
@@ -949,9 +954,6 @@ jobs:
           MOYASAR_API_BASE_URL: http://127.0.0.1:3197/v1/
           HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4173
         run: |
-          # Preserve the canonical isolated fixture in a named GitHub database
-          # accepted by the provider, participation and crew fixture guards.
-          psql postgresql://hydroland:hydroland@localhost:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_d03_hr_http_test_availability_ci TEMPLATE hydroland'
           node apps/api/scripts/provider-read-fixture.mjs > /tmp/d03-provider.env
           node --env-file=/tmp/d03-provider.env apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
