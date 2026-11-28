@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const schema=read('prisma/schema.prisma'),service=read('src/marine-operations/marine-operations.service.ts'),tripService=read('src/marine-operations/marine-trip-management.service.ts'),controller=read('src/marine-operations/marine-operations.controller.ts'),bookingController=read('src/trips/marine-trip-bookings.controller.ts'),bookingService=read('src/trips/booking-management.service.ts'),calendar=read('src/trips/calendar-allocation.service.ts'),clearance=read('src/trips/operational-clearance.service.ts');
+const domain=read('src/marine-operations/marine-operations.domain.ts').replace(/\s+/g,'');
 const centerTrips=read('src/organizations/center-trip-management.service.ts');
 const centerRoutes=read('src/organizations/dive-center-portal.controller.ts');
 const checks=[
@@ -15,7 +16,8 @@ const checks=[
  ['Readiness snapshots',schema.includes('model MarineReadinessSnapshot {')],
  ['Fail closed unlinked',service.includes("MARINE_ASSET_NOT_LINKED")],
  ['Required documents',service.includes('REQUIRED_MARINE_DOCUMENTS')],
- ['Maintenance blocker',service.includes("MAINTENANCE_BLOCKING")],
+ ['Maintenance blocker',domain.includes("if(asset.maintenance.some(m=>!['COMPLETED','CANCELLED'].includes(m.status)&&(!m.dueAt||m.dueAt<=now)))reasons.push('MAINTENANCE_BLOCKING')")&&domain.includes("status:hard.length?'NOT_READY'")],
+ ['Native readiness uses shared maintenance gate',service.includes("from './marine-operations.domain'")&&service.includes('inspectMarineReadiness(asset)')],
  ['Owned maintenance protection',service.includes('addOwnedMaintenance')&&service.includes('completeOwnedMaintenance')],
  ['Asset readiness endpoint',controller.includes("assets/:assetId/readiness")],
  ['Admin asset review endpoint',controller.includes("admin/assets/review")],

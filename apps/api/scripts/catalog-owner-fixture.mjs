@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-export async function bindFixtureOwner(db, ownerId) {
+export async function bindFixtureOwner(db, ownerId, {retainEvidence = false} = {}) {
   const url = new URL(process.env.DATABASE_URL);
   assert.equal(process.env.CI, 'true');
   assert(['localhost','127.0.0.1','[::1]'].includes(url.hostname));
@@ -20,6 +20,10 @@ export async function bindFixtureOwner(db, ownerId) {
     assert.equal(current.value.organizationId, id);
     if (previous) await tx.operationalSetting.update({where:{key},data:{value:previous.value,updatedAt:previous.updatedAt}});
     else await tx.operationalSetting.delete({where:{key}});
-    await tx.organization.delete({where:{id}});
+    // Nested native fixtures can bind source documents, brand snapshots, staff
+    // and immutable crew receipts to this organization. Restore only the prior
+    // canonical pointer; retain their organization and identities as evidence
+    // until the disposable database itself is discarded.
+    if (!retainEvidence) await tx.organization.delete({where:{id}});
   });
 }
