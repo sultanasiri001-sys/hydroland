@@ -1,10 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {participationFixture} from './participation-isolated-fixture.mjs';
+import {crewAssignmentFixture} from './crew-assignment-isolated-fixture.mjs';
 
 // Invoked only by the parent harness after its CI + loopback API/database guards.
 export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
  const participation=participationFixture(db,base);
  const trips=[],bookingIds=[],resources=[],events=[],tag='BookingManagerCI-'+randomUUID();
+ let crewFixture;
  const weatherBefore=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
  const policyBefore=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
  const safetyPolicyBefore=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
@@ -95,6 +97,11 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:{enabled:true,mode:'ENFORCE'}}});p=await preview(booking.id);check(p.blockers.includes('WEATHER_GATE'),'Unapproved weather blocks confirmation');check((await apply(booking.id,command(p))).status===409,'Weather gate cannot be skipped by center');await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:{enabled:false}}});
   await db.roleAssignment.create({data:{accountId:other.id,role:'STAFF',status:'ACTIVE'}});
   const resource=await db.calendarResource.create({data:{type:'CREW',referenceId:other.id,name:'Booking crew'}});resources.push(resource.id);const event=await db.calendarEvent.create({data:{organizationId:a.org.id,type:'TRIP',referenceType:'TRIP',referenceId:trip.id,title:'Booking crew',startsAt:trip.startsAt,endsAt:trip.endsAt}});events.push(event.id);await db.calendarAllocation.create({data:{eventId:event.id,resourceId:resource.id,startsAt:trip.startsAt,endsAt:trip.endsAt}});
+  crewFixture=await crewAssignmentFixture(db);
+  const acceptedCrew=await crewFixture.ready(trip.id,{roleType:'CREW',account:other,resource});
+  const readCrew=async()=>(await db.$queryRaw`SELECT * FROM "CrewAssignment" WHERE "id"::text=${acceptedCrew.assignmentId}`)[0];
+  const approvedCrew=await readCrew(),crewSnapshot=JSON.stringify(approvedCrew);
+  check(approvedCrew.status==='ACCEPTED'&&approvedCrew.requestedByAccountId===crewFixture.requester.id&&approvedCrew.approvedByAccountId===crewFixture.approver.id&&approvedCrew.requestedByAccountId!==approvedCrew.approvedByAccountId&&approvedCrew.accountId===other.id&&approvedCrew.respondedAt&&approvedCrew.qualificationSnapshot&&approvedCrew.compensationSnapshot,'Source-backed qualified crew is independently approved and personally accepts compensation before booking confirmation');
   p=await preview(booking.id);c=command(p);
   check(p.calendarReservation.status==='NEEDS_ATTENTION'&&p.calendarReservation.issues.includes('CALENDAR_REQUIRED_RESOURCE_MISSING')&&p.calendarReservation.confirmationGateEnforced===false,'Calendar reports missing shore site without activating a proposed policy');
   await db.calendarEvent.update({where:{id:event.id},data:{status:'INACTIVE'}});
@@ -125,15 +132,17 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   try{
    check((await apply(booking.id,c)).status===500,'Simulated notification persistence failure aborts confirmation');
    check((await db.booking.findUnique({where:{id:booking.id}})).status==='PENDING','Notification failure rolls back booking state');
-   check(await db.crewAssignment.count({where:{tripId:trip.id}})===0&&await db.auditEvent.count({where:{resource:'Booking',resourceId:booking.id,action:'BOOKING_CONFIRMED'}})===0,'Notification failure rolls back crew assignment and audit');
+   check(await db.crewAssignment.count({where:{tripId:trip.id}})===1&&JSON.stringify(await readCrew())===crewSnapshot&&await db.auditEvent.count({where:{resource:'Booking',resourceId:booking.id,action:'BOOKING_CONFIRMED'}})===0,'Notification failure preserves approved crew without creating assignments and rolls back confirmation audit');
+   check(await db.notification.count({where:{type:{in:['BOOKING_CONFIRMED','TRIP_BOOKING_CONFIRMED']},payload:{path:['bookingId'],equals:booking.id}}})===0,'Notification failure leaves neither customer nor crew confirmation notices');
   }finally{await db.$executeRawUnsafe('ALTER TABLE "Notification" DROP CONSTRAINT booking_ci_notice_failure');}
   const results=await Promise.all([apply(booking.id,c),apply(booking.id,c)]);check(results.every(r=>r.status===201),'Concurrent identical confirmation replays safely: '+JSON.stringify(results));
   check((await apply(booking.id,c)).body.alreadyApplied===true,'Retry after lost response is idempotent');
   check((await apply(booking.id,{...c,reason:'Changed request meaning'})).status===409,'Request ID cannot change meaning');
   check(await db.auditEvent.count({where:{resource:'Booking',resourceId:booking.id,action:'BOOKING_CONFIRMED'}})===1,'Confirmation audit once');
   check(await db.notification.count({where:{type:'BOOKING_CONFIRMED',payload:{path:['bookingId'],equals:booking.id}}})===1,'Customer confirmation notice once');
-  check(await db.crewAssignment.count({where:{tripId:trip.id,resourceId:resource.id}})===1,'Crew assignment saved in confirmation transaction');
-  check(await db.notification.count({where:{type:'TRIP_CREW_ASSIGNMENT',payload:{path:['bookingId'],equals:booking.id}}})===1,'Crew notice once');
+  check(await db.crewAssignment.count({where:{tripId:trip.id}})===1&&JSON.stringify(await readCrew())===crewSnapshot,'Booking confirmation and retries preserve the original approved assignment without creating or accepting another');
+  check(await db.notification.count({where:{accountId:other.id,type:'TRIP_BOOKING_CONFIRMED',AND:[{payload:{path:['bookingId'],equals:booking.id}},{payload:{path:['assignmentId'],equals:acceptedCrew.assignmentId}}]}})===1,'Existing qualified crew receives one booking notice across concurrent confirmation and lost-response retries');
+  check(await db.notification.count({where:{type:'TRIP_CREW_ASSIGNMENT',payload:{path:['bookingId'],equals:booking.id}}})===0,'Booking confirmation never manufactures an assignment notice');
   check((await db.booking.findUnique({where:{id:booking.id}})).status==='CONFIRMED','Confirmed state persisted');
   p=await preview(booking.id);check(!p.actions.includes('CONFIRM')&&p.actions.includes('CANCEL'),'Confirmed booking exposes cancellation only');
   let cancel=command(p,'CANCEL');const cancelResult=await apply(booking.id,cancel);check(cancelResult.status===201&&cancelResult.body.financialActionExecuted===false,'Center cancellation saved without refund');check((await apply(booking.id,cancel)).body.alreadyApplied===true,'Cancellation retry replays');
@@ -152,6 +161,10 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   if(policyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${policyBefore[0].state},"updatedAt"=${policyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
   if(safetyPolicyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${safetyPolicyBefore[0].state},"updatedAt"=${safetyPolicyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
   await participation.cleanup();
+  if(crewFixture){
+   await db.compensationTerm.deleteMany({where:{id:{in:crewFixture.created.terms.map(row=>row.id)}}});
+   await db.employment.deleteMany({where:{id:{in:crewFixture.created.employments.map(row=>row.id)}}});
+  }
   await db.invoice.deleteMany({where:{payment:{bookingId:{in:bookingIds}}}});await db.payment.deleteMany({where:{bookingId:{in:bookingIds}}});await db.bookingParticipant.deleteMany({where:{bookingId:{in:bookingIds}}});await db.booking.deleteMany({where:{id:{in:bookingIds}}});await db.crewAssignment.deleteMany({where:{tripId:{in:trips}}});await db.calendarAllocation.deleteMany({where:{eventId:{in:events}}});await db.calendarEvent.deleteMany({where:{id:{in:events}}});await db.calendarResource.deleteMany({where:{id:{in:resources}}});await db.safetyChecklist.deleteMany({where:{tripId:{in:trips}}});await db.operationalSetting.deleteMany({where:{key:{in:trips.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:trips}}});
  }
 }

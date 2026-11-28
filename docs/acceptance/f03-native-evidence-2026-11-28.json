@@ -1,0 +1,409 @@
+{
+  "date": "2026-11-28",
+  "scope": "F03 isolated local technical acceptance",
+  "baseCommit": "6611c84ec34cbe258d13a27fb56637db4b78f431",
+  "migrationSha256": "cae47f834161772ef43e74128674c27dcca8f725f0273046218d854dab312415",
+  "httpPostgres": {
+    "scope": "F03 isolated HTTP/PostgreSQL acceptance",
+    "passed": 21,
+    "failed": 0,
+    "skipped": 0,
+    "groups": [
+      {
+        "name": "default-off catalog and owner-only authoring",
+        "status": "PASS"
+      },
+      {
+        "name": "native draft and independent-source requirement",
+        "status": "PASS"
+      },
+      {
+        "name": "atomic adoption audit rollback and exact source pin",
+        "status": "PASS"
+      },
+      {
+        "name": "directory requires current explicit consent and safety acknowledgement",
+        "status": "PASS"
+      },
+      {
+        "name": "directory discloses aliases only and excludes unrelated accounts",
+        "status": "PASS"
+      },
+      {
+        "name": "request retry is idempotent and never substitutes another member",
+        "status": "PASS"
+      },
+      {
+        "name": "only invited participant can accept with fresh bilateral terms",
+        "status": "PASS"
+      },
+      {
+        "name": "withdrawal removes current visibility and rejoining cannot restore old consent",
+        "status": "PASS"
+      },
+      {
+        "name": "concurrent duplicate pair records only one active request",
+        "status": "PASS"
+      },
+      {
+        "name": "acceptance racing withdrawal cannot retain a live match",
+        "status": "PASS"
+      },
+      {
+        "name": "audit failure rolls back a matching request",
+        "status": "PASS"
+      },
+      {
+        "name": "source drift hides peer details and refuses fresh matching",
+        "status": "PASS"
+      },
+      {
+        "name": "retired source and revoked coordinator disable program",
+        "status": "PASS"
+      },
+      {
+        "name": "suspended peer disappears from matching visibility",
+        "status": "PASS"
+      },
+      {
+        "name": "revocation holding a source row fences acceptance before commit",
+        "status": "PASS"
+      },
+      {
+        "name": "program activity uses existing community lifecycle and bounded dates",
+        "status": "PASS"
+      },
+      {
+        "name": "program registration atomically requires current participant consent",
+        "status": "PASS"
+      },
+      {
+        "name": "volunteer correction keeps previous values, reasons and reviewer identity",
+        "status": "PASS"
+      },
+      {
+        "name": "unrelated B14 event still accepts its existing registration flow",
+        "status": "PASS"
+      },
+      {
+        "name": "program withdrawal stops new actions but keeps exits available",
+        "status": "PASS"
+      },
+      {
+        "name": "named coordinator does not implicitly acquire D16 event moderation",
+        "status": "PASS"
+      }
+    ],
+    "postgres": "PostgreSQL 17.12 (Debian 17.12-0+deb13u1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "syntheticApprovalOnly": true,
+    "realD19Adoption": false,
+    "realUserAcceptance": false,
+    "externalCertificateIssued": false,
+    "productionWrites": false
+  },
+  "migrationTypes": {
+    "scope": "F03 migration native-key compatibility and constraints",
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "text",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "text",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "text",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "text",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "uuid",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "uuid",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "text",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "text",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "text",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "text",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "text",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "text",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "text",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "text",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "text",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "text",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "uuid",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "uuid",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "text",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "text",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "text",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "text",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "text",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "text",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "text",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "text",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      },
+      {
+        "account": "uuid",
+        "organization": "uuid",
+        "document": "uuid",
+        "event": "uuid",
+        "registration": "uuid",
+        "status": "PASS"
+      }
+    ]
+  },
+  "browser": {
+    "files": [
+      "community-f03.spec.js",
+      "community-runtime.spec.js"
+    ],
+    "listedTests": 24,
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "lastRun": {
+      "status": "passed",
+      "failedTests": []
+    }
+  },
+  "webNodeTests": {
+    "passed": 165,
+    "failed": 0,
+    "skipped": 0
+  },
+  "realD19Approval": false,
+  "realUserAcceptance": false,
+  "productionWrites": false,
+  "sourceHashes": {
+    "apps/api/prisma/schema.prisma": "9ffc908befbea7b39e3e8b14729734dd2a5f7b622474ceac0603d9f55a6c78b1",
+    "apps/api/prisma/migrations/20261128040000_community_program_buddy_consent/migration.sql": "cae47f834161772ef43e74128674c27dcca8f725f0273046218d854dab312415",
+    "apps/api/scripts/community-f03-http-checks.mjs": "37bbb3606fdad8a26147ab4e9bbd5ebb69a163c319f569361d87aa5345bfd457",
+    "apps/api/scripts/community-f03-migration-types.mjs": "aaa5c4ea3ed5190811740f08a6841a3ae13f5b45489a4742122aeb0b7a238fd4",
+    "apps/api/src/community/community.controller.ts": "e19a5b60cad34689f67d6f9231ae0097a73f0a31170fc631dd2d084c8b7ede8e",
+    "apps/api/src/community/community.module.ts": "1437e90ca5f7fa2e565a9ca43b7838eae2df2588dd4e9ae2e55e2a321c0e1c53",
+    "apps/api/src/community/community.service.ts": "2d4062d1b281d8687239d95aacd7e62c8e70b69b44b6092478eb838b3d98f96c",
+    "apps/api/src/community/f03-buddy.service.ts": "effa355fb1520180cc2151f01763fbaa0655e8a20a2d43370a6f9b7d614a90eb",
+    "apps/api/src/community/f03-program.domain.ts": "c7661ab6fd71984b9ad0cc1197bea9d0d8ed520e4a67084bea1d6b95fee21c72",
+    "apps/api/src/community/f03-program.service.ts": "2ed250c8e73463d211e9a452db7ae984233197483cd47cf2f0fe9773d81cb63d",
+    "apps/api/src/community/f03.controller.ts": "948c1a6958b408aa5e43f92267902160f6b274f09454dd5ce08865aa67e715c9",
+    "apps/web/e2e/community-f03.spec.js": "deee031d2c80418f9d145fb2041cf184be0336d0a4e9278bdd35caf57ec64b2e",
+    "apps/web/src/app.js": "1f51e68f662005f2efd83360f90e465a69b694074e795184495494b1ca5ef782",
+    "apps/web/src/hydroland-community.js": "753099860944f580f7cdcc1ac00ba263635d4537f338ada2e1440b0b2718ee9e",
+    "apps/web/src/hydroland-community-programs.css": "ecac616df2dd1590198808ec937881d02c5c649cd530f0633e1857eb760ae3b0",
+    "apps/web/src/hydroland-community-programs.js": "de2e09b2b6dcdec2220c7c272ae25c82c266b1806e993af48c4a6e600d9d2c96",
+    "apps/web/src/hydroland-workspace-ui.js": "99f3a93a2b9ad4fdec977b7db466d978f13cf286f389be59e56c761faf62ed8a"
+  }
+}

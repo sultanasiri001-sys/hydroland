@@ -1,3 +1,4 @@
+import {crewAssignmentFixture} from './crew-assignment-isolated-fixture.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
@@ -22,8 +23,8 @@ export async function calendarExplicitBlocksAcceptance({db,base,admin,reader,tok
   await setPolicy('WEATHER','WEATHER_GATE','DISABLED');
   await db.operationalSetting.upsert({where:{key:'WEATHER_GATE'},create:{key:'WEATHER_GATE',value:{enabled:false,mode:'ADVISORY',provider:'STORMGLASS'}},update:{value:{enabled:false,mode:'ADVISORY',provider:'STORMGLASS'}}});
   trip=await db.trip.create({data:{title:'Disposable explicit safety/compliance fixture',type:'TEST',capacity:1,status:'OPEN',startsAt,endsAt}});
-  resource=await db.calendarResource.create({data:{type:'CREW',name:'Disposable accepted-crew fixture',referenceId:admin.id}});
-  await db.crewAssignment.create({data:{tripId:trip.id,resourceId:resource.id,accountId:admin.id,roleType:'CREW',status:'ACCEPTED'}});
+  const crewFixture=await crewAssignmentFixture(db);
+  resource=(await crewFixture.ready(trip.id,{roleType:'CREW'})).resource;
   const safety=await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',items:{fixture:true},decidedAt:new Date()}});
   await db.tripComplianceReview.create({data:{id:randomUUID(),tripId:trip.id,regulatoryStatus:'APPROVED',permitStatus:'APPROVED'}});
   const path='/trips/admin/calendar?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to);
@@ -67,7 +68,7 @@ export async function calendarExplicitBlocksAcceptance({db,base,admin,reader,tok
   try{assert.equal((await call(path)).status,403);assert.equal((await grant(admin)).status,403);checks+=2;}finally{await db.roleAssignment.update({where:{id:role.id},data:{status:role.status}});}
   console.log(`Calendar explicit prohibition HTTP/PostgreSQL passed: ${checks} acceptance groups; all three policy states; safety deferral and regulatory/permit rejection stay NOT_READY; clearance remains blocked; optional missing approval stays optional; source history preserved; fresh authority; no provider or financial action.`);
  }finally{
-  if(trip){await db.auditEvent.deleteMany({where:{resource:'Trip',resourceId:trip.id}});await db.crewAssignment.deleteMany({where:{tripId:trip.id}});await db.safetyChecklist.deleteMany({where:{tripId:trip.id}});await db.tripComplianceReview.deleteMany({where:{tripId:trip.id}});await db.trip.delete({where:{id:trip.id}});}
+  if(trip){await db.calendarAllocation.deleteMany({where:{event:{referenceType:'TRIP',referenceId:trip.id}}});await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:trip.id}});await db.auditEvent.deleteMany({where:{resource:'Trip',resourceId:trip.id}});await db.crewAssignment.deleteMany({where:{tripId:trip.id}});await db.safetyChecklist.deleteMany({where:{tripId:trip.id}});await db.tripComplianceReview.deleteMany({where:{tripId:trip.id}});await db.trip.delete({where:{id:trip.id}});}
   if(resource)await db.calendarResource.delete({where:{id:resource.id}});
   for(const [category,ruleKey] of rules){const old=originals.find(r=>r.category===category&&r.ruleKey===ruleKey);if(old)await db.policyControl.update({where:{category_ruleKey:{category,ruleKey}},data:{state:old.state,updatedAt:old.updatedAt}});else await db.policyControl.deleteMany({where:{category,ruleKey}});}
   if(weather)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:weather.value,updatedAt:weather.updatedAt}});else await db.operationalSetting.deleteMany({where:{key:'WEATHER_GATE'}});

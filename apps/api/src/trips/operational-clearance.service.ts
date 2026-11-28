@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { CalendarAllocationService } from './calendar-allocation.service';
 import { applyParticipationPolicy, evaluateParticipation } from '../participation/participation-evaluator';
 import { PolicyControlService } from './policy-control.service';
+import { crewAssignmentReadiness } from './crew-assignment-evidence';
 
 type ClearanceEvent = { id:string; action:string; occurredAt:Date };
 type ClearanceState = { status:'MISSING'|'REVOKED'|'STALE'|'ACTIVE'; event:ClearanceEvent|null; changedAt:Date|null };
@@ -76,7 +77,11 @@ export class OperationalClearanceService {
     const participants=await tx.bookingParticipant.findMany({where:{booking:{tripId,status:'CONFIRMED'}},select:{id:true},orderBy:{id:'asc'}});
     const policy=await new PolicyControlService(tx as DatabaseService,this.audit).decision('BOOKING','PARTICIPANT_ELIGIBILITY',tx);
     const participation=applyParticipationPolicy(await Promise.all(participants.map(async row=>(await evaluateParticipation(tx,'BOOKING_PARTICIPANT',row.id)).readiness)),policy);
-    return {status:participation.ready?'ACTIVE':'STALE',event:latest,changedAt};
+    // Source revocation/expiry may not update CrewAssignment itself. Inspect
+    // current native evidence without providers, snapshots or physical removal.
+    const crew=await tx.$queryRaw<Array<{id:string}>>`SELECT id FROM "CrewAssignment" WHERE "tripId"::text=${tripId} AND status='ACCEPTED' ORDER BY id`;
+    const crewReady=(await Promise.all(crew.map(row=>crewAssignmentReadiness(tx,row.id)))).every(row=>row.operationalReady);
+    return {status:participation.ready&&crewReady?'ACTIVE':'STALE',event:latest,changedAt};
   }
 
   async currentStatus(tripId:string,tx:Prisma.TransactionClient=this.db){

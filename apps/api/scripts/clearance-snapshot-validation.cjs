@@ -1,4 +1,12 @@
 const assert = require('node:assert/strict');
+// This contract suite isolates the clearance transaction orchestration.
+// Qualification/source/reservation truth is exercised through native HTTP/PG
+// by f02-crew-assignment-http-e2e.mjs and the canonical clearance acceptance.
+const crewEvidence = require('../dist/trips/crew-assignment-evidence');
+crewEvidence.crewAssignmentReadiness = async (tx, id) => {
+  assert.equal(id, 'crew');
+  return tx.f02ReadinessForContract();
+};
 const { CalendarAllocationService } = require('../dist/trips/calendar-allocation.service');
 const { OperationalClearanceService } = require('../dist/trips/operational-clearance.service');
 const { PolicyControlService } = require('../dist/trips/policy-control.service');
@@ -12,13 +20,14 @@ const { REQUIRED_MARINE_DOCUMENTS } = require('../dist/marine-operations/marine-
 const start = new Date('2080-06-15T06:00:00Z'), end = new Date('2080-06-15T07:00:00Z');
 let checks = 0;
 global.fetch = () => { throw Error('Provider/network calls forbidden'); };
-function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED', maintenance = false, missingMaintenanceSchema = false, failAt, terminal = false } = {}) {
+function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED', maintenance = false, missingMaintenanceSchema = false, failAt, terminal = false, crewReady = true } = {}) {
   const reads = [], snapshots = [], grants = [], failure = new Error('Injected ' + failAt);
   let rootReads = 0;
   const hit = name => { reads.push(name); if (name === failAt) throw failure; };
   const trip = { id: 'trip', title: 'Fixture', type: 'BOAT', startsAt: start, endsAt: end, capacity: 2, status: terminal ? 'CANCELLED' : 'OPEN', bookings: [{ seats: 1 }], safetyChecklists: [{ decision: safety }] };
   const allocations = ['BOAT', 'EQUIPMENT'].map(type => ({ id: type, tripId: 'trip', resourceType: type, resourceId: type, resourceName: type }));
   const tx = {
+    f02ReadinessForContract: async () => { hit('crew-readiness'); return {operationalReady:crewReady,legacyUnverified:false,reasons:crewReady?[]:['F02_CURRENT_EVIDENCE_REVIEW_REQUIRED']}; },
     trip: {
       findUnique: async () => { hit('trip'); return trip; },
       findMany: async args => { hit('trips'); assert.equal(args.where.id, 'trip'); return [trip]; },
@@ -28,7 +37,7 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
       if (sql.includes('GREATEST')) { hit('revision'); return [{ changedAt: start }]; }
       if (sql.includes('PolicyControl')) { hit('policy:' + values[1]); return [{ state: values[0] === 'WEATHER' ? 'DISABLED' : state }]; }
       if (sql.includes('OperationalSetting')) { hit('weather-setting'); return []; }
-      if (sql.includes('CrewAssignment')) { hit('crew'); return [{ tripId: 'trip', status: 'ACCEPTED' }]; }
+      if (sql.includes('CrewAssignment')) { hit('crew'); return [{ id:'crew', tripId: 'trip', status: 'ACCEPTED' }]; }
       if (sql.includes('CalendarAllocation')) { hit('allocations'); return allocations; }
       if (sql.includes('BoatResourceCompliance')) { hit('boat-proof'); return [{ resourceId: 'BOAT', registrationNumber: 'fixture', registrationStatus: 'VERIFIED', navigationLicenseNumber: 'fixture', navigationLicenseExpiresAt: end, safetyCertificateExpiresAt: end, passengerLimit: 2 }]; }
       if (sql.includes('EquipmentInspection')) { hit('equipment-proof'); return [{ resourceId: 'EQUIPMENT', status: 'PASS', serviceExpiresAt: end }]; }
@@ -50,10 +59,11 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
   const clearance = new OperationalClearanceService(root, audit, calendar);
   return { tx, calendar, clearance, reads, snapshots, grants, failure, rootReads: () => rootReads };
 }
-function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = start, action = 'OPERATIONAL_CLEARANCE_GRANTED', auditFailure = false } = {}) {
+function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = start, action = 'OPERATIONAL_CLEARANCE_GRANTED', auditFailure = false, crewReady = true } = {}) {
   const events = action ? [{ id: 'prior', action, occurredAt: end }] : [], audits = [];
   const failure = new Error('Injected revocation audit failure');
   const tx = {
+    f02ReadinessForContract: async () => ({operationalReady:crewReady,legacyUnverified:false,reasons:crewReady?[]:['F02_CURRENT_EVIDENCE_REVIEW_REQUIRED']}),
     auditEvent: { findFirst: async () => events.at(-1) ?? null },
     bookingParticipant: { findMany: async () => invalidSource ? [{ id: 'participant' }] : [] },
     // The production evaluator must reject corrupt adopted evidence even when
@@ -63,6 +73,7 @@ function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = s
       const sql = strings.join('');
       if (sql.includes('GREATEST')) return [{ changedAt }];
       if (sql.includes('PolicyControl')) return [{ state }];
+      if (sql.includes('CrewAssignment')) return [{id:'crew'}];
       throw Error('Unexpected status query: ' + sql);
     },
   };
@@ -87,13 +98,13 @@ function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = s
     assert.equal(r.clearance, 'GRANTED'); assert.equal(r.readiness.status, 'READY'); assert.equal(f.grants.length, 1); assert.equal(f.snapshots.length, 1); assert.equal(f.rootReads(), 0);
     for (const name of ['trip', 'trips', 'weather-setting', 'weather-proof', 'policy:REGISTRATION', 'policy:INSPECTION_STATUS', 'policy:PERMIT_REQUIRED', 'marine-proof', 'marine-snapshot', 'boat-proof', 'equipment-proof', 'maintenance-schema', 'maintenance-proof', 'trip-proof', 'audit']) assert(f.reads.includes(name), name);
     checks++;
-    for (const options of [{ safety: 'DEFERRED' }, { regulatory: 'REJECTED' }, { maintenance: true }]) {
+    for (const options of [{ safety: 'DEFERRED' }, { regulatory: 'REJECTED' }, { maintenance: true }, {crewReady:false}]) {
       const blocked = fixture({ state, ...options });
       await assert.rejects(() => blocked.clearance.grant('reviewer', 'trip'), e => e.getStatus() === 409);
       assert.equal(blocked.grants.length, 0); assert.equal(blocked.snapshots.length, 0); assert.equal(blocked.rootReads(), 0); checks++;
     }
   }
-  for (const failAt of ['boat-proof', 'equipment-proof', 'maintenance-schema', 'maintenance-proof', 'trip-proof', 'marine-snapshot', 'audit']) {
+  for (const failAt of ['boat-proof', 'equipment-proof', 'maintenance-schema', 'maintenance-proof', 'trip-proof', 'marine-snapshot', 'crew-readiness', 'audit']) {
     const f = fixture({ failAt }); await assert.rejects(() => f.clearance.grant('reviewer', 'trip'), e => e === f.failure);
     assert.equal(f.grants.length, 0); assert.equal(f.snapshots.length, 0); assert.equal(f.rootReads(), 0); checks++;
   }
@@ -125,6 +136,9 @@ function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = s
     assert.equal((await stale.clearance.status('trip')).status, 'REVOKED');
     assert.equal((await stale.clearance.revokeIfStale('trip')).reason, 'NO_ACTIVE_CLEARANCE');
     assert.equal(stale.audits.length, 1, 'Repeated scans must preserve the one revocation'); checks++;
+    const crewStale = statusFixture({state,crewReady:false});
+    assert.equal((await crewStale.clearance.status('trip')).status,'STALE');assert.equal(crewStale.audits.length,0);
+    assert.equal((await crewStale.clearance.revokeIfStale('trip')).revoked,true);assert.equal(crewStale.audits.length,1);checks++;
   }
   const failedScan = statusFixture({ invalidSource: true, auditFailure: true });
   await assert.rejects(() => failedScan.clearance.revokeIfStale('trip'), error => error === failedScan.failure);

@@ -1,3 +1,4 @@
+import {crewAssignmentFixture} from './crew-assignment-isolated-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -37,15 +38,16 @@ export async function clearanceSnapshotAcceptance({db,base,admin,reader,token}){
   await db.operationalSetting.upsert({where:{key:'WEATHER_GATE'},create:{key:'WEATHER_GATE',value:{enabled:false,mode:'ADVISORY'}},update:{value:{enabled:false,mode:'ADVISORY'}}});
   trip=await db.trip.create({data:{title:'Disposable A14 snapshot fixture',type:'BOAT',status:'OPEN',capacity:1,startsAt,endsAt}});
   boat=await db.calendarResource.create({data:{type:'BOAT',name:'Disposable A14 boat'}});
-  crew=await db.calendarResource.create({data:{type:'CREW',name:'Disposable A14 crew',referenceId:admin.id}});
+  const crewFixture=await crewAssignmentFixture(db);
+  const acceptedCrew=await crewFixture.ready(trip.id,{roleType:'CREW'});crew=acceptedCrew.resource;
   // The later unrelated revision masks an older row's timestamp. This exposes
   // why a global MAX(updatedAt) comparison cannot replace a transactional read.
-  await db.crewAssignment.create({data:{tripId:trip.id,resourceId:crew.id,accountId:admin.id,roleType:'CREW',status:'ACCEPTED',updatedAt:new Date('2090-01-01')}});
+  await db.crewAssignment.update({where:{id:acceptedCrew.assignmentId},data:{updatedAt:new Date('2090-01-01')}});
   await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',items:{fixture:true},decidedAt:new Date()}});
   await db.tripComplianceReview.create({data:{id:randomUUID(),tripId:trip.id,regulatoryStatus:'APPROVED',permitStatus:'APPROVED'}});
   await db.boatResourceCompliance.create({data:{id:randomUUID(),resourceId:boat.id,registrationNumber:'fixture',registrationStatus:'VERIFIED',navigationLicenseNumber:'fixture',navigationLicenseExpiresAt:endsAt,safetyCertificateExpiresAt:endsAt,passengerLimit:1}});
   asset=await db.marineAsset.create({data:{organizationId:randomUUID(),calendarResourceId:boat.id,name:'Disposable A14 asset',assetType:'DIVE_BOAT',status:'ACTIVE',documents:{create:REQUIRED_MARINE_DOCUMENTS.map(documentType=>({documentType,status:'VERIFIED',expiresAt:endsAt}))}}});
-  const event=await db.calendarEvent.create({data:{type:'TRIP',referenceType:'TRIP',referenceId:trip.id,title:trip.title,startsAt,endsAt,status:'ACTIVE'}});
+  const event=await db.calendarEvent.findUniqueOrThrow({where:{referenceType_referenceId:{referenceType:'TRIP',referenceId:trip.id}}});
   await db.calendarAllocation.create({data:{eventId:event.id,resourceId:boat.id,startsAt,endsAt,status:'ACTIVE'}});
 
   for(const [actor,status] of [[null,401],[reader,403]]){assert.equal((await request(actor)).status,status);assert.equal(await grants(),0);assert.equal(await snapshots(),0);checks++;}

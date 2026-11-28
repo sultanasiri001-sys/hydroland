@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
 import { platformOrganization } from '../hr/staffing-catalog';
 import { CommunityPolicyService } from './community-policy.service';
+import { F03ProgramService } from './f03-program.service';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -20,7 +21,7 @@ const volunteerDecisions:CommunityVolunteerDecision[]=['ATTENDED','REJECTED'];
 
 @Injectable()
 export class CommunityService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly policy:CommunityPolicyService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly policy:CommunityPolicyService,private readonly programs:F03ProgramService){}
 
   private mutate<T>(accountId:string,admin:boolean,work:(tx:Prisma.TransactionClient)=>Promise<T>,requireActivation=true){
     return this.db.serializable(async tx=>{
@@ -88,12 +89,13 @@ export class CommunityService {
 
   async publicEvents(){
     if(!await this.policy.active(this.db))return [];
-    return this.db.communityEvent.findMany({
+    const events=await this.db.communityEvent.findMany({
       where:{status:'PUBLISHED',endsAt:{gte:new Date()}},
       include:{_count:{select:{volunteerRegistrations:true}}},
       orderBy:{startsAt:'asc'},
       take:100,
     });
+    const visible=[];for(const event of events){const binding=await this.programs.eventBinding(this.db,event.id);if(!binding){visible.push(event);continue;}try{const program=await this.programs.packet(this.db,binding.programId);visible.push({...event,program:{...program,activity:binding.activity}})}catch{continue}}return visible;
   }
 
   async myPosts(accountId:string){
@@ -208,14 +210,15 @@ export class CommunityService {
 
   async adminEvents(actor:string){
     await this.policy.moderator(this.db,actor);
-    return this.db.communityEvent.findMany({
+    const events=await this.db.communityEvent.findMany({
       include:{createdBy:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},_count:{select:{volunteerRegistrations:true}}},
       orderBy:{startsAt:'desc'},
       take:200,
     });
+    return Promise.all(events.map(async event=>({...event,programBinding:await this.programs.eventBinding(this.db,event.id)})));
   }
 
-  async createEvent(adminAccountId:string,input:{title:string;description:string;locationName:string;startsAt:string;endsAt:string;capacity?:number;status?:'DRAFT'|'PUBLISHED'}){
+  async createEvent(adminAccountId:string,input:{title:string;description:string;locationName:string;startsAt:string;endsAt:string;capacity?:number;status?:'DRAFT'|'PUBLISHED';programId?:unknown;activity?:unknown}){
     return this.mutate(adminAccountId, true, async tx => {
       const {starts,ends}=this.eventTiming(input.startsAt,input.endsAt);
       const status=input.status||'DRAFT';
@@ -232,6 +235,7 @@ export class CommunityService {
           status,
         },
       });
+      await this.programs.bindNewEvent(tx,adminAccountId,event.id,input.programId,input.activity);
       await this.audit.record({actorId:adminAccountId,action:'COMMUNITY_EVENT_CREATED',resource:'CommunityEvent',resourceId:event.id,metadata:{status:event.status,capacity:event.capacity}}, tx);
       return event;
     });
@@ -242,9 +246,11 @@ export class CommunityService {
       const event=await tx.communityEvent.findUnique({where:{id:eventId}});
       if(!event)throw new NotFoundException('Community event not found.');
       if(input.status!==undefined&&!eventStatuses.includes(input.status))throw new BadRequestException('Invalid event status.');
+      const program=input.status!=='CANCELLED'?await this.programs.requireEvent(tx,eventId):null;
       const starts=input.startsAt===undefined?event.startsAt:this.date(input.startsAt,'Event start');
       const ends=input.endsAt===undefined?event.endsAt:this.date(input.endsAt,'Event end');
       if(ends<=starts)throw new BadRequestException('Event end must be after its start.');
+      if(program)this.programs.eventDates(program.payload,starts,ends);
       const capacity=input.capacity===undefined?event.capacity:this.positiveInteger(input.capacity,'Event capacity',100000,true);
       if(capacity!==null){
         const active=await tx.communityVolunteerRegistration.count({where:{eventId,status:{in:['REGISTERED','ATTENDED']}}});
@@ -265,7 +271,7 @@ export class CommunityService {
     });
   }
 
-  async registerVolunteer(accountId:string,eventId:string){
+  async registerVolunteer(accountId:string,eventId:string,programConsent?:unknown){
     return this.mutate(accountId,false,async tx=>{
       const event=await tx.communityEvent.findUnique({where:{id:eventId}});
       if(!event)throw new NotFoundException('Community event not found.');
@@ -280,7 +286,8 @@ export class CommunityService {
       const registration=existing
         ?await tx.communityVolunteerRegistration.update({where:{id:existing.id},data:{status:'REGISTERED',approvedMinutes:null,reviewNotes:null,reviewedByAccountId:null,reviewedAt:null,attendedAt:null}})
         :await tx.communityVolunteerRegistration.create({data:{eventId,accountId}});
-      await this.audit.record({actorId:accountId,action:'COMMUNITY_VOLUNTEER_REGISTERED',resource:'CommunityVolunteerRegistration',resourceId:registration.id,metadata:{eventId}},tx);
+      const programConsentEvidence=await this.programs.registerConsent(tx,eventId,registration.id,programConsent);
+      await this.audit.record({actorId:accountId,action:'COMMUNITY_VOLUNTEER_REGISTERED',resource:'CommunityVolunteerRegistration',resourceId:registration.id,metadata:{eventId,...(programConsentEvidence?{programConsent:programConsentEvidence}:{})}},tx);
       return registration;
     });
   }
@@ -293,7 +300,9 @@ export class CommunityService {
       take:100,
     });
     const approvedMinutes=registrations.reduce((total,item)=>total+(item.status==='ATTENDED'?(item.approvedMinutes||0):0),0);
-    return {registrations,approvedMinutes};
+    const ids=registrations.map(r=>r.id),events=await this.db.auditEvent.findMany({where:{action:'COMMUNITY_VOLUNTEER_REVIEWED',resource:'CommunityVolunteerRegistration',resourceId:{in:ids}},orderBy:[{occurredAt:'asc'},{id:'asc'}]});
+    const history=events.map(e=>{const m=e.metadata&&typeof e.metadata==='object'&&!Array.isArray(e.metadata)?e.metadata as Record<string,unknown>:{};return {id:e.id,registrationId:e.resourceId,occurredAt:e.occurredAt,previousMinutes:m.previousMinutes??null,approvedMinutes:m.approvedMinutes??null,reason:m.reason??null,reviewerAccountId:m.reviewerAccountId??null}});
+    return {registrations,approvedMinutes,history};
   }
 
   async cancelVolunteer(accountId:string,registrationId:string){
@@ -321,21 +330,25 @@ export class CommunityService {
     });
   }
 
-  async decideVolunteer(adminAccountId:string,registrationId:string,input:{status:CommunityVolunteerDecision;approvedMinutes?:number;reviewNotes?:string}){
+  async decideVolunteer(adminAccountId:string,registrationId:string,input:{status:CommunityVolunteerDecision;approvedMinutes?:number;reviewNotes?:string;expectedUpdatedAt?:unknown}){
     return this.mutate(adminAccountId, true, async tx => {
       if(!volunteerDecisions.includes(input.status))throw new BadRequestException('Invalid volunteer decision.');
       const registration=await tx.communityVolunteerRegistration.findUnique({where:{id:registrationId}});
       if(!registration)throw new NotFoundException('Volunteer registration not found.');
       if(registration.status==='CANCELLED')throw new ConflictException('Cancelled volunteer registrations cannot be reviewed.');
+      if(input.expectedUpdatedAt!==undefined&&(typeof input.expectedUpdatedAt!=='string'||input.expectedUpdatedAt!==registration.updatedAt.toISOString()))throw new ConflictException('The volunteer record changed.');
       const reviewNotes=this.optionalText(input.reviewNotes,2000);
       const approvedMinutes=input.status==='ATTENDED'?this.positiveInteger(input.approvedMinutes,'Approved volunteer minutes',1440):null;
       if(input.status==='REJECTED'&&!reviewNotes)throw new BadRequestException('Review notes are required when rejecting a volunteer registration.');
+      if(registration.status==='ATTENDED'&&approvedMinutes!==registration.approvedMinutes&&!reviewNotes)throw new BadRequestException('A reason is required when correcting approved volunteer minutes.');
+      await this.programs.requireVolunteerConsent(tx,registration.eventId,registrationId);
+      if(registration.status===input.status&&registration.approvedMinutes===approvedMinutes&&registration.reviewNotes===(reviewNotes??registration.reviewNotes))return registration;
       const now=new Date();
       const updated=await tx.communityVolunteerRegistration.update({
         where:{id:registrationId},
-        data:{status:input.status,approvedMinutes,reviewNotes:reviewNotes??registration.reviewNotes,reviewedByAccountId:adminAccountId,reviewedAt:now,attendedAt:input.status==='ATTENDED'?now:registration.attendedAt},
+        data:{status:input.status,approvedMinutes,reviewNotes:reviewNotes??registration.reviewNotes,reviewedByAccountId:adminAccountId,reviewedAt:now,attendedAt:input.status==='ATTENDED'?(registration.attendedAt??now):registration.attendedAt},
       });
-      await this.audit.record({actorId:adminAccountId,action:'COMMUNITY_VOLUNTEER_REVIEWED',resource:'CommunityVolunteerRegistration',resourceId:registrationId,metadata:{previousStatus:registration.status,status:input.status,approvedMinutes}}, tx);
+      await this.audit.record({actorId:adminAccountId,action:'COMMUNITY_VOLUNTEER_REVIEWED',resource:'CommunityVolunteerRegistration',resourceId:registrationId,metadata:{previousStatus:registration.status,status:input.status,previousMinutes:registration.approvedMinutes,approvedMinutes,reason:reviewNotes??null,previousReason:registration.reviewNotes,reviewerAccountId:adminAccountId}}, tx);
       return updated;
     });
   }

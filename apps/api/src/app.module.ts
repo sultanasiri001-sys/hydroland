@@ -5,6 +5,7 @@ import { AdminModule } from './admin/admin.module';
 import { AgentModule } from './agents/agent.module';
 import { ActivationModule } from './activation/activation.module';
 import { AuditModule } from './audit/audit.module';
+import { AssetPassportsModule } from './asset-passports/asset-passports.module';
 import { AuthModule } from './auth/auth.module';
 import { CommunityModule } from './community/community.module';
 import { CredentialsModule } from './credentials/credentials.module';
@@ -44,7 +45,7 @@ import { StaffingAdminModule } from './hr/staffing-admin.module';
 import { DocumentFormModule } from './document-forms/document-form.module';
 
 @Module({
-  imports: [PrivacyModule, ParticipationModule, ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
+  imports: [PrivacyModule, ParticipationModule, ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, AssetPassportsModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,

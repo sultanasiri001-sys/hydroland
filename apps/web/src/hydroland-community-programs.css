@@ -1,0 +1,23 @@
+.hl-community-programs{margin:1.5rem 0;padding:1.25rem;border:1px solid var(--border,#d4e3e8);border-radius:1rem;background:var(--surface,#fff);color:var(--text,#17343e);overflow-wrap:anywhere}
+.hl-community-programs header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem}
+.hl-community-programs h3,.hl-community-programs h4{margin:.65rem 0}
+.hl-community-programs form,.hl-f03-fields{display:grid;gap:.8rem}
+.hl-community-programs label{display:grid;gap:.4rem;min-width:0}
+.hl-community-programs input,.hl-community-programs select,.hl-community-programs textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:.7rem;border:1px solid #9bb5bf;border-radius:.5rem;background:var(--surface,#fff);color:inherit;font:inherit}
+.hl-community-programs textarea{min-height:6rem;resize:vertical}
+.hl-community-programs .hl-f03-choice{display:flex;align-items:flex-start;gap:.6rem}
+.hl-community-programs input[type=checkbox]{width:1.2rem;min-width:1.2rem;height:1.2rem;margin-top:.15rem}
+.hl-community-programs button,.hl-community-programs summary{cursor:pointer;min-height:44px;font:inherit}
+.hl-community-programs button{padding:.65rem 1rem;border-radius:.6rem;border:1px solid #547c8a;background:#eaf4f6;color:#17343e;max-width:100%;white-space:normal}
+.hl-community-programs button:disabled{opacity:.6;cursor:default}
+.hl-community-programs :focus-visible{outline:3px solid #087b9b;outline-offset:3px}
+.hl-community-programs [role=status]{min-height:1.5rem}
+.hl-f03-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:1rem}
+.hl-f03-card{border:1px solid #bfd3da;border-radius:.75rem;padding:1rem;margin:.8rem 0;min-width:0}
+.hl-f03-terms{background:#edf6f8;padding:1rem;border-radius:.75rem}
+.hl-f03-terms p{white-space:pre-wrap}
+.hl-f03-boundary{border-inline-start:4px solid #d49a2b;padding:.6rem .8rem;background:#fff6dc;color:#40351e}
+.hl-community-programs details{margin-top:1rem}
+.hl-community-programs details>summary{font-weight:600;padding:.5rem}
+.hl-community-programs small{display:block;margin:.4rem 0}
+@media(max-width:420px){.hl-community-programs{padding:.8rem}.hl-f03-card{padding:.75rem}.hl-community-programs header{align-items:stretch}.hl-community-programs header button{width:100%}}

@@ -1,0 +1,18 @@
+.hl-crew-assignments{margin:1rem 0 2rem;padding:1rem;border:1px solid var(--hl-line-soft);border-radius:20px;background:var(--hl-surface,rgba(4,29,43,.96));overflow-wrap:anywhere}
+.hl-crew-assignments nav,.hl-crew-assignment-card>header{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem}
+.hl-crew-assignments button{padding:.65rem .85rem;border:1px solid var(--hl-line);border-radius:11px;background:rgba(244,209,140,.08);color:var(--hl-text,#edf8ff);font:inherit;cursor:pointer}
+.hl-crew-assignments button:disabled{opacity:.5;cursor:wait}
+.hl-crew-assignments [data-crew-workspace],.hl-crew-assignments [data-crew-list]{display:grid;gap:1rem;margin-top:1rem;min-width:0}
+.hl-crew-assignments form,.hl-crew-assignments label{display:grid;gap:.55rem;min-width:0}
+.hl-crew-assignments form{gap:.85rem}
+.hl-crew-assignments label:has(input[type=checkbox]){display:flex;align-items:start}
+.hl-crew-assignments input:not([type=checkbox]),.hl-crew-assignments select{box-sizing:border-box;min-width:0;width:100%;max-width:100%;padding:.65rem;border:1px solid var(--hl-line);border-radius:10px;background:#082536;color:#edf8ff;font:inherit}
+.hl-crew-assignments input[type=checkbox]{flex:none;width:1.15rem;height:1.15rem;margin:.25rem}
+.hl-crew-assignment-card{min-width:0;padding:1rem;border:1px solid var(--hl-line-soft);border-radius:14px;background:rgba(10,50,68,.38)}
+.hl-crew-assignment-card>header>strong{flex:1;min-width:10rem}
+.hl-crew-assignment-card p{line-height:1.7;margin:.7rem 0}
+.hl-crew-assignments small{display:block;line-height:1.7;color:var(--hl-muted,#b4ccd7)}
+.hl-crew-assignments [data-crew-compensation]{padding:.8rem;margin:.8rem 0;border-inline-start:3px solid var(--hl-theme-gold,#f4d18c);background:rgba(244,209,140,.04)}
+.hl-crew-assignments [data-crew-compensation] p{margin:.3rem 0}
+@media(min-width:900px){.hl-crew-assignments [data-crew-proposal]{grid-template-columns:repeat(2,minmax(0,1fr))}.hl-crew-assignments [data-crew-proposal]>h4,.hl-crew-assignments [data-crew-source-note]{grid-column:1/-1}}
+@media(max-width:560px){.hl-crew-assignments{padding:.7rem}.hl-crew-assignment-card{padding:.8rem}.hl-crew-assignments nav>button{flex:1}.hl-crew-assignment-card .hl-member-actions>button{flex:1}}

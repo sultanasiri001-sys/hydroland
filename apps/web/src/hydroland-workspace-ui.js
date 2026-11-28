@@ -34,7 +34,7 @@
     '.hl-weather-admin':['admin'],
     '.hl-booking-admin':['admin'],
     '.hl-calendar-admin':['admin'],
-    '.hl-crew-assignments':['instructor','center','boat','admin'],
+    '.hl-crew-assignments':['diver','instructor','center','boat','organization','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
     '#hl-contracts':['center','instructor','admin'],
@@ -95,7 +95,7 @@
     uiLocale.setHTML(fragment, [['home','الرئيسية','#hl-diver-dashboard'],['boat','الرحلات والحجوزات','#trips'],['water','سجل الغوص','logbook'],['tanks','المعدات','diver-equipment-list'],['certificate','الشهادات','certs'],['bag','المتجر والتأجير','#store'],['people','المجتمع','#community'],['pin','المواقع','#marine-intelligence'],['learn','التدريب','#training'],['mail','الرسائل','messages'],['help','مركز المساعدة','#hl-support'],['settings','الإعدادات','settings']].map(([art,label,target])=>target.startsWith('#')?uiLocale.html`<a class="nav-item" href="${target}"><span class="nav-icon">${icon(art)}</span><span>${uiLocale.label(label)}</span></a>`:uiLocale.html`<button type="button" class="nav-item" data-hl-action="${target}"><span class="nav-icon">${icon(art)}</span><span>${uiLocale.label(label)}</span></button>`).join(''));nav.replaceChildren(...fragment.children,switcher);
   };
   const main=document.getElementById('main');
-  const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],'hl-training-service':['.hl-training'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
+  const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],'hl-training-service':['.hl-training'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-community-programs','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
   let selected=null;
   const announceSelection=target=>document.dispatchEvent(new CustomEvent('hydroland:workspace-selected',{detail:{target}}));
   const show=target=>{

@@ -50,7 +50,7 @@ try{
  const assignment=await db.crewAssignment.create({data:{tripId:replacementTrip.id,resourceId:oldResource.id,accountId:old.id,roleType:'INSTRUCTOR',status:'PENDING'}});
  const eligible=await crew.eligibleResources(replacementTrip.id,oldResource.id,old.id);
  check(!eligible.rows.some(row=>row.referenceId===actor.id),'candidate selection excludes accounts reserved through another role');
- await conflict(()=>crew.replaceAssignment(assignment,{id:instructor.id,type:'INSTRUCTOR',referenceId:actor.id,name:instructor.name},'REASSIGNED'),'automatic replacement rechecks canonical account aliases inside transaction');
+ await conflict(()=>crew.replaceAssignment(assignment,{id:instructor.id,type:'INSTRUCTOR',referenceId:actor.id,name:instructor.name},'REASSIGNED'),'legacy automatic replacement cannot bypass the independent F02 gate');
  check((await db.crewAssignment.findUniqueOrThrow({where:{id:assignment.id}})).status==='PENDING','alias conflict leaves original crew assignment unchanged');
  await calendar.allocate(actor.id,first.id,[]);
  const freed=await trip();await calendar.allocate(actor.id,freed.id,[captain.id]);
