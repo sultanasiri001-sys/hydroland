@@ -20,7 +20,7 @@ const sql = readFileSync(migration, 'utf8'), sourceDigest = createHash('sha256')
 assert.match(sql, /^BEGIN;/); assert.match(sql, /COMMIT;\s*$/);
 const admin = new PrismaClient(), checks = [], startedAt = new Date().toISOString();
 let version, failure;
-const sqlState = state => error => error.code === 'P2010' && error.meta?.code === state;
+const sqlState = (...states) => error => error.code === 'P2010' && states.includes(error.meta?.code);
 function apply(url) {
   // Execute the real file, including its BEGIN/COMMIT and DO block. Splitting
   // this SQL at semicolons would not test the actual production transaction.
@@ -76,8 +76,9 @@ try {
       await assert.rejects(db.$executeRaw`UPDATE "TripReturnRecord" SET "revision"=0 WHERE "tripId"::text=${trip}`, sqlState('23514'));
       await assert.rejects(db.$executeRaw`UPDATE "TripReturnRecord" SET "sourceDigest"='invalid' WHERE "tripId"::text=${trip}`, sqlState('23514'));
       await assert.rejects(db.$executeRaw`UPDATE "TripReturnRecord" SET "entries"='{}'::jsonb WHERE "tripId"::text=${trip}`, sqlState('23514'));
-      await assert.rejects(db.$executeRaw`DELETE FROM "Trip" WHERE "id"::text=${trip}`, sqlState('23503'));
-      await assert.rejects(db.$executeRaw`DELETE FROM "Account" WHERE "id"::text=${account}`, sqlState('23503'));
+      // PostgreSQL 18 distinguishes RESTRICT from other foreign-key failures.
+      await assert.rejects(db.$executeRaw`DELETE FROM "Trip" WHERE "id"::text=${trip}`, sqlState('23503', '23001'));
+      await assert.rejects(db.$executeRaw`DELETE FROM "Account" WHERE "id"::text=${account}`, sqlState('23503', '23001'));
       assert.deepEqual(await db.$queryRaw`SELECT "id"::text,"marker" FROM "Trip" ORDER BY "id"`, nativeBefore.trips);
       assert.deepEqual(await db.$queryRaw`SELECT "id"::text,"marker" FROM "Account" ORDER BY "id"`, nativeBefore.accounts);
       const indexes = await db.$queryRaw`SELECT indexname FROM pg_indexes WHERE schemaname=current_schema() AND tablename='TripReturnRecord'`;

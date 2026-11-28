@@ -24,7 +24,9 @@ INSERT INTO "CommunityBuddyRequest" (id,"programId","requesterAccountId","recipi
 DO $$ BEGIN
  BEGIN INSERT INTO "CommunityBuddyRequest" SELECT 'duplicate',"programId","requesterAccountId","recipientAccountId","requesterMembershipId","recipientMembershipId","requesterRevision","recipientRevision","sourceHash","pairKey",'another-key',"requestDigest",status,"createdAt","respondedAt" FROM "CommunityBuddyRequest" WHERE id='request'; RAISE EXCEPTION 'Duplicate active pair was accepted'; EXCEPTION WHEN unique_violation THEN NULL; END;
  BEGIN UPDATE "CommunityProgram" SET state='UNREVIEWED'; RAISE EXCEPTION 'Invalid state was accepted'; EXCEPTION WHEN check_violation THEN NULL; END;
- BEGIN DELETE FROM "Account" WHERE id='${a}'; RAISE EXCEPTION 'Referenced account was deleted'; EXCEPTION WHEN foreign_key_violation THEN NULL; END;
+ -- PostgreSQL 18 reports RESTRICT as 23001; older versions report 23503.
+ BEGIN DELETE FROM "Account" WHERE id='${a}'; RAISE EXCEPTION 'Referenced account was deleted'; EXCEPTION WHEN foreign_key_violation OR restrict_violation THEN NULL; END;
+ IF NOT EXISTS(SELECT 1 FROM "Account" WHERE id='${a}') THEN RAISE EXCEPTION 'Referenced account was not retained'; END IF;
 END $$;
 DELETE FROM "CommunityEvent" WHERE id='${event}'; DELETE FROM "CommunityVolunteerRegistration" WHERE id='${registration}';
 DO $$ BEGIN IF EXISTS(SELECT 1 FROM "CommunityEventProgram") OR EXISTS(SELECT 1 FROM "CommunityVolunteerConsent") THEN RAISE EXCEPTION 'Source cascade failed'; END IF; END $$;
